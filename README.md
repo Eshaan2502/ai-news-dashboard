@@ -12,7 +12,7 @@ Built as a single, cohesive full-stack app: **Next.js 16 (App Router, TypeScript
 
 | BRD requirement | How it's met |
 |---|---|
-| Aggregate from ≥20 high-signal sources | 22 RSS/API feeds (OpenAI, DeepMind, Anthropic, HuggingFace, arXiv ×3, TechCrunch, The Verge, Reddit, HN, YouTube…), fetched concurrently and resiliently |
+| Aggregate from ≥20 high-signal sources | 26 registered feeds (~22 actively ingesting): OpenAI, DeepMind, Google AI, HuggingFace, NVIDIA, AWS ML, arXiv ×3, BAIR, TechCrunch, Ars Technica, The Verge, Reddit, HN, YouTube… — fetched concurrently and resiliently. A few BRD-named sources (Anthropic, Meta AI, Stability) publish no public RSS and are registered but inactive. |
 | Normalize (title, summary, author, date, url) | `src/lib/ingest/normalize.ts` — HTML-stripped, date-parsed, image-extracted |
 | Deduplicate (≥0.9 precision) + cluster | Hybrid: URL canonicalization → fuzzy title (Jaccard) → **semantic cosine via embeddings**; near-dupes share a `cluster_id` |
 | AI summarization / captioning | OpenAI `gpt-4o-mini` for summaries, entities, topic & impact; per-channel broadcast copy |

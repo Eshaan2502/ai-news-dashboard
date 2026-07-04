@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
+import { notInArray } from "drizzle-orm";
 import { db, client } from "./index";
 import { sources, users, newsItems } from "./schema";
 import { SOURCES } from "../ingest/sources";
@@ -23,9 +24,17 @@ async function seed() {
       .values(s)
       .onConflictDoUpdate({
         target: sources.url,
-        set: { name: s.name, siteUrl: s.siteUrl, category: s.category, weight: s.weight, active: true },
+        set: {
+          name: s.name,
+          siteUrl: s.siteUrl,
+          category: s.category,
+          weight: s.weight,
+          active: s.active ?? true,
+        },
       });
   }
+  // Reconcile: drop sources no longer in the registry (e.g. changed feed URLs).
+  await db.delete(sources).where(notInArray(sources.url, SOURCES.map((s) => s.url)));
   console.log(`  ✓ ${SOURCES.length} sources`);
 
   console.log("→ Ensuring demo user…");

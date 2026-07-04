@@ -177,42 +177,48 @@ export async function runIngestion(): Promise<IngestStats> {
     c.enriched = useAI;
   });
 
-  // ── 6. Persist ─────────────────────────────────────────────────────────
+  // ── 6. Persist (bulk insert in chunks to minimize round-trips) ──────────
   let inserted = 0;
   let duplicates = 0;
   let enrichedCount = 0;
-  for (const c of candidates) {
-    const impactScore = computeImpact(c.impact, c.src.weight, c.item.publishedAt);
+
+  const rows = candidates.map((c) => ({
+    sourceId: c.src.id,
+    title: c.item.title,
+    summary: c.summary,
+    rawContent: c.item.rawContent,
+    author: c.item.author,
+    url: c.item.url,
+    canonicalUrl: c.item.canonicalUrl,
+    imageUrl: c.item.imageUrl,
+    publishedAt: c.item.publishedAt,
+    tags: c.topic ? [c.topic] : [],
+    entities: c.entities,
+    topic: c.topic,
+    impactScore: computeImpact(c.impact, c.src.weight, c.item.publishedAt),
+    clusterId: c.clusterId,
+    isDuplicate: c.isDuplicate,
+    embedding: c.embedding,
+    enriched: c.enriched,
+  }));
+
+  const insertedUrls = new Set<string>();
+  const CHUNK = 100;
+  for (let i = 0; i < rows.length; i += CHUNK) {
     const res = await db
       .insert(newsItems)
-      .values({
-        sourceId: c.src.id,
-        title: c.item.title,
-        summary: c.summary,
-        rawContent: c.item.rawContent,
-        author: c.item.author,
-        url: c.item.url,
-        canonicalUrl: c.item.canonicalUrl,
-        imageUrl: c.item.imageUrl,
-        publishedAt: c.item.publishedAt,
-        tags: c.topic ? [c.topic] : [],
-        entities: c.entities,
-        topic: c.topic,
-        impactScore,
-        clusterId: c.clusterId,
-        isDuplicate: c.isDuplicate,
-        embedding: c.embedding,
-        enriched: c.enriched,
-      })
+      .values(rows.slice(i, i + CHUNK))
       .onConflictDoNothing({ target: newsItems.canonicalUrl })
-      .returning({ id: newsItems.id });
+      .returning({ canonicalUrl: newsItems.canonicalUrl });
+    for (const r of res) insertedUrls.add(r.canonicalUrl);
+  }
 
-    if (res.length) {
-      inserted++;
-      if (c.isDuplicate) duplicates++;
-      if (c.enriched) enrichedCount++;
-      insertedBySource.set(c.src.id, (insertedBySource.get(c.src.id) ?? 0) + 1);
-    }
+  for (const c of candidates) {
+    if (!insertedUrls.has(c.item.canonicalUrl)) continue;
+    inserted++;
+    if (c.isDuplicate) duplicates++;
+    if (c.enriched) enrichedCount++;
+    insertedBySource.set(c.src.id, (insertedBySource.get(c.src.id) ?? 0) + 1);
   }
 
   // Fill per-source inserted counts.

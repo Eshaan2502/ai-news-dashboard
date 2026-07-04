@@ -12,7 +12,9 @@ import postgres from "postgres";
  * Run with: npm run db:migrate
  */
 async function main() {
-  const url = process.env.DATABASE_URL;
+  // Prefer the session-mode pooler (DIRECT_URL, port 5432) for DDL/migrations;
+  // fall back to DATABASE_URL. Supabase recommends this split.
+  const url = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set. Copy .env.example to .env first.");
 
   const sql = postgres(url, { max: 1, prepare: false });

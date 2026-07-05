@@ -101,13 +101,16 @@ All secrets live in `.env`, which is **git-ignored** — never commit real value
    `OPENAI_API_KEY`, `INGEST_SECRET`. Migrations + seed run automatically on boot.
 3. Add your Railway domain as a Google OAuth redirect URI (step 2 above) and publish the
    consent screen.
-4. *(Optional)* add a second Railway service from the same repo with start command
-   `npm run worker` (set `RUN_MIGRATIONS=false`) for scheduled ingestion — or use Railway
-   Cron to `POST /api/ingest` with the `x-ingest-secret` header.
+4. Scheduled ingestion is **built in**: the web service starts an in-process scheduler on
+   boot (`src/instrumentation.ts`) that ingests every `INGEST_INTERVAL_MINUTES` (default 15).
+   *(Optional)* to split it out instead, add a second Railway service from the same repo with
+   start command `npm run worker` (set `RUN_MIGRATIONS=false` there and
+   `INGEST_INTERVAL_MINUTES=0` on the web service) — or use Railway Cron to
+   `POST /api/ingest` with the `x-ingest-secret` header.
 
 Production notes: sessions are JWT (no session table needed); the guest cookie is
-`Secure` + `httpOnly` in production; the public Refresh button is identity-gated and
-rate-limited server-side (5-min cooldown) so anonymous traffic can't run up LLM costs.
+`Secure` + `httpOnly` in production; ingestion runs server-side on a schedule — no
+user-facing trigger — so anonymous traffic can't run up LLM costs.
 
 ---
 
@@ -156,7 +159,7 @@ src/
 │  ├─ db/                    # schema, client, queries, user resolution, migrate, seed
 │  ├─ ingest/                # sources registry, fetcher, normalize, dedup, score, run
 │  └─ ai/openai.ts           # summaries + embeddings (+ fallbacks)
-└─ worker/index.ts           # scheduled ingestion loop
+└─ worker/index.ts           # standalone ingestion worker (optional split deployment)
 ```
 
 ## 📜 Scripts

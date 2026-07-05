@@ -6,9 +6,11 @@ impact scoring, and the key engineering decisions & trade-offs.
 ## 1. Overview
 
 A single **Next.js 16 (App Router, TypeScript)** application provides the frontend, the REST
-API, and the ingestion logic; a small **worker** process runs the same ingestion on a
-schedule. State lives in **PostgreSQL + pgvector**. **OpenAI** powers summarization,
-entity/topic extraction, broadcast copy, and the embeddings used for semantic dedup.
+API, and the ingestion logic — and keeps itself fresh: an in-process scheduler started at
+boot (`src/instrumentation.ts`) re-ingests every 15 minutes. A standalone **worker** process
+can run the same loop instead for split deployments. State lives in **PostgreSQL +
+pgvector**. **OpenAI** powers summarization, entity/topic extraction, broadcast copy, and
+the embeddings used for semantic dedup.
 
 Choosing one cohesive full-stack app over a separate frontend + backend was deliberate for
 an MVP built and defended by one person: less operational surface, shared types end-to-end,
@@ -23,7 +25,14 @@ Sources ──▶ Ingestion pipeline ──▶ Postgres+pgvector ──▶ API r
 ## 2. Layers
 
 ### Ingestion (`src/lib/ingest`)
-- **`sources.ts`** — 22 registered feeds with `category` and `weight` (authority bias).
+- **`sources.ts`** — 78 registered feeds (70 active) with `category` and `weight` (authority
+  bias), spanning all 8 topics — primary sources (OpenAI, NASA, WHO), research outlets
+  (Nature, Science, arXiv, MIT), and established media (BBC, NYT, The Economist, FT,
+  Washington Post). Every feed URL is verified against the real fetcher before activation;
+  dead ones are parked with `active: false`.
+- **`scheduler.ts`** — the shared non-overlapping ingestion loop (run now, then every
+  `INGEST_INTERVAL_MINUTES`), started in-process by `src/instrumentation.ts` on server boot
+  and by `src/worker/index.ts` in split deployments.
 - **`fetcher.ts`** — fetches raw XML with a real User-Agent, timeout and redirect handling
   (Reddit/YouTube reject default agents), then parses with `rss-parser`. Never throws —
   returns a tagged `{ ok, items } | { ok:false, error }`, so one bad feed can't fail the run.
@@ -43,9 +52,9 @@ Drizzle schema + a transparent SQL migrator (`migrate.ts` applies `drizzle/*.sql
 (`queries.ts`) for the feed, sources, topics and stats.
 
 ### API (`src/app/api`)
-Thin route handlers over the query/command helpers. All are `force-dynamic` (live data). A
-`triggerIngestion` **server action** backs the in-app Refresh button; `POST /api/ingest`
-(secret-protected) backs the external worker/cron.
+Thin route handlers over the query/command helpers. All are `force-dynamic` (live data).
+`POST /api/ingest` (secret-protected) is the manual/external override; routine ingestion
+runs on the in-process schedule.
 
 ### Frontend (`src/app`, `src/components`)
 Server components fetch initial data directly from the query layer (no self-fetch); client
@@ -94,8 +103,9 @@ for each candidate (canonical URL not already stored):
 
 - **URL canonicalization** first removes trivial dupes (tracking params, fragments, trailing
   slash) for free and is enforced by a unique index.
-- **Two thresholds** give high precision: fuzzy title catches re-posts with tweaked wording;
-  cosine catches semantically identical stories with different headlines.
+- **Two thresholds** give high precision: fuzzy title (Jaccard over content words —
+  stopwords are filtered so filler variations can't dilute a match) catches re-posts with
+  tweaked wording; cosine catches semantically identical stories with different headlines.
 - The feed shows only canonical items by default; `clusterSize` surfaces an "N sources" badge.
   A toggle reveals near-duplicates.
 - **Graceful degradation:** with no OpenAI key there are no embeddings, so dedup uses URL +

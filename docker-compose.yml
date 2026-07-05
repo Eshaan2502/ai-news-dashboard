@@ -36,7 +36,10 @@ services:
     ports:
       - "3000:3000"
 
-  # Optional: scheduled ingestion. Start with:  docker compose --profile worker up
+  # Optional split-out ingestion. The app already self-schedules ingestion in
+  # production (src/instrumentation.ts); only use this profile if you also set
+  # INGEST_INTERVAL_MINUTES=0 on the app service. Start with:
+  #   docker compose --profile worker up
   worker:
     build: .
     profiles: ["worker"]

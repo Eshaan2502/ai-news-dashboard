@@ -54,10 +54,31 @@ export function normalizeTitle(title: string): string {
     .trim();
 }
 
-/** Jaccard similarity over word tokens — cheap fuzzy title match, 0..1. */
+/**
+ * English function words that carry no story identity. Filtered out before the
+ * Jaccard comparison so outlets' filler variations ("X nears islands" vs
+ * "X nears the islands in the US") don't dilute the match. Deliberately
+ * conservative — function words only, nothing content-bearing.
+ */
+const TITLE_STOPWORDS = new Set([
+  "a", "an", "the", "and", "or", "but", "nor", "so", "yet",
+  "of", "in", "on", "at", "to", "for", "with", "from", "by", "as", "into", "onto",
+  "is", "are", "was", "were", "be", "been", "being", "has", "have", "had",
+  "it", "its", "his", "her", "their", "this", "that", "these", "those",
+]);
+
+function titleTokens(title: string): Set<string> {
+  const all = normalizeTitle(title).split(" ").filter(Boolean);
+  const content = all.filter((t) => !TITLE_STOPWORDS.has(t));
+  // A title made entirely of function words is rare but possible — fall back
+  // to the unfiltered tokens rather than comparing empty sets.
+  return new Set(content.length > 0 ? content : all);
+}
+
+/** Jaccard similarity over content-word tokens — cheap fuzzy title match, 0..1. */
 export function titleSimilarity(a: string, b: string): number {
-  const ta = new Set(normalizeTitle(a).split(" ").filter(Boolean));
-  const tb = new Set(normalizeTitle(b).split(" ").filter(Boolean));
+  const ta = titleTokens(a);
+  const tb = titleTokens(b);
   if (ta.size === 0 || tb.size === 0) return 0;
   let inter = 0;
   for (const t of ta) if (tb.has(t)) inter++;

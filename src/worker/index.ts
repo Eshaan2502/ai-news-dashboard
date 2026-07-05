@@ -1,31 +1,21 @@
 import "dotenv/config";
-import { runIngestion } from "../lib/ingest/run";
+import { startIngestionLoop } from "../lib/ingest/scheduler";
 
 /**
- * Scheduled ingestion worker (BRD §4 "Scheduled fetchers", <15m latency).
- * Runs a pass immediately, then every INGEST_INTERVAL_MINUTES. Deploy as a
- * long-running Railway service, or use Railway Cron to POST /api/ingest instead.
+ * Standalone scheduled-ingestion worker. The deployed web app already
+ * self-schedules ingestion in-process (src/instrumentation.ts); run this only
+ * in a split deployment — a dedicated Railway service with start command
+ * `npm run worker` — and set INGEST_INTERVAL_MINUTES=0 on the web service so
+ * both don't ingest (double runs are harmless thanks to the canonical-URL
+ * guard, just wasteful).
  */
 const intervalMin = Number(process.env.INGEST_INTERVAL_MINUTES ?? 15);
-let running = false;
-
-async function tick() {
-  if (running) return; // never overlap runs
-  running = true;
-  try {
-    const s = await runIngestion();
-    console.log(
-      `[worker] ${new Date().toISOString()} · +${s.inserted} items · ` +
-        `${s.sourcesOk}/${s.sourcesTotal} sources ok · ${s.duplicates} deduped · ` +
-        `${s.filteredJunk} junk dropped · ${(s.durationMs / 1000).toFixed(1)}s`,
-    );
-  } catch (e) {
-    console.error("[worker] run failed:", e);
-  } finally {
-    running = false;
-  }
+if (!Number.isFinite(intervalMin) || intervalMin <= 0) {
+  console.error("[worker] INGEST_INTERVAL_MINUTES must be a positive number");
+  process.exit(1);
 }
 
-console.log(`[worker] starting — ingesting every ${intervalMin} minute(s)`);
-void tick();
-setInterval(tick, intervalMin * 60_000);
+startIngestionLoop(intervalMin, "worker");
+// Keep the process alive: the loop's timer is unref'd by design (the web app
+// must be able to shut down cleanly), so the worker holds its own handle.
+setInterval(() => {}, 1 << 30);

@@ -43,7 +43,7 @@ export function TopicSection({
         </HorizontalRow>
       ) : (
         <p className="rounded-lg border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted">
-          No stories here yet — hit Refresh in the top bar to pull the latest.
+          No stories here yet — check back soon for the latest.
         </p>
       )}
     </section>

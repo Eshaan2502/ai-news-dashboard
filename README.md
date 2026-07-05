@@ -72,6 +72,7 @@ All secrets live in `.env`, which is **git-ignored** — never commit real value
 | `INGEST_ITEMS_PER_SOURCE` | Max items pulled per feed per run (default 15). |
 | `ENRICH_LIMIT` | Max new items sent to the LLM per run — cost guard (default 80). |
 | `DEDUP_TITLE_THRESHOLD` / `DEDUP_COSINE_THRESHOLD` | Dedup sensitivity (0.82 / 0.88). |
+| `MIN_IMPACT_SCORE` | Importance floor for browsing views — stories scoring below it are hidden (default 45, `0` disables). Search, source drill-downs, and Favorites are never gated. |
 | `INGEST_INTERVAL_MINUTES` | Worker cadence (default 15). |
 | `INGEST_SECRET` | Auth for `POST /api/ingest` (worker/cron path). **Set a real value in production.** |
 

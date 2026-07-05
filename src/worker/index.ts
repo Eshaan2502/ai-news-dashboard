@@ -16,7 +16,8 @@ async function tick() {
     const s = await runIngestion();
     console.log(
       `[worker] ${new Date().toISOString()} · +${s.inserted} items · ` +
-        `${s.sourcesOk}/${s.sourcesTotal} sources ok · ${s.duplicates} deduped · ${(s.durationMs / 1000).toFixed(1)}s`,
+        `${s.sourcesOk}/${s.sourcesTotal} sources ok · ${s.duplicates} deduped · ` +
+        `${s.filteredJunk} junk dropped · ${(s.durationMs / 1000).toFixed(1)}s`,
     );
   } catch (e) {
     console.error("[worker] run failed:", e);

@@ -24,6 +24,7 @@ export const GET = withErrorHandling("GET /api/news", async (req: NextRequest) =
     limit: num("limit"),
     offset: num("offset"),
     days: num("days"),
+    minImpact: num("minImpact"),
   });
 
   return jsonOk({ items, count: items.length });

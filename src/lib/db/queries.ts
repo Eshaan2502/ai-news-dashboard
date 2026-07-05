@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "./index";
 import { newsItems, sources, favorites } from "./schema";
 import type { SortOption } from "../constants";
@@ -17,12 +17,22 @@ export type FeedParams = {
   limit?: number;
   offset?: number;
   days?: number;
+  /** Hide stories with impactScore below this; 0 disables the gate. */
+  minImpact?: number;
 };
+
+/** Importance floor for browsing views (home rows, topic feeds). */
+const DEFAULT_MIN_IMPACT = Number(process.env.MIN_IMPACT_SCORE ?? 45);
 
 /** Main feed query — powers the trending row, topic rows, and Favorites. */
 export async function getFeed(p: FeedParams): Promise<FeedItemDTO[]> {
   const conds: SQL[] = [];
   if (!p.includeDuplicates) conds.push(eq(newsItems.isDuplicate, false));
+  // Importance gate: on by default when browsing, off when the user explicitly
+  // asked for something (search, a specific source, their own favorites).
+  const explicitLookup = Boolean(p.q || p.sourceId || p.favoritesOnly);
+  const minImpact = p.minImpact ?? (explicitLookup ? 0 : DEFAULT_MIN_IMPACT);
+  if (minImpact > 0) conds.push(gte(newsItems.impactScore, minImpact));
   if (p.sourceId) conds.push(eq(newsItems.sourceId, p.sourceId));
   if (p.topic) conds.push(eq(newsItems.topic, p.topic));
   if (p.days) conds.push(gt(newsItems.fetchedAt, new Date(Date.now() - p.days * 86_400_000)));

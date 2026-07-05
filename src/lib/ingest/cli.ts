@@ -35,6 +35,7 @@ async function main() {
   console.log(`Sources       : ${stats.sourcesOk}/${stats.sourcesTotal} ok, ${stats.sourcesFailed} failed`);
   console.log(`Fetched       : ${stats.fetched}`);
   console.log(`Skipped (seen): ${stats.skippedExisting}`);
+  console.log(`Filtered (junk): ${stats.filteredJunk}`);
   console.log(`Inserted      : ${stats.inserted} (${stats.duplicates} clustered as duplicates)`);
   console.log(`AI-enriched   : ${stats.enriched}`);
   console.log(`Duration      : ${(stats.durationMs / 1000).toFixed(1)}s`);

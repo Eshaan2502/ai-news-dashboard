@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { estimateNewsworthiness } from "../ingest/heuristics";
 import { truncate } from "../utils";
 
 /**
@@ -69,7 +70,9 @@ export async function enrich(input: EnrichInput): Promise<Enrichment> {
             '{ "summary": string (1-2 neutral sentences, <=45 words), ' +
             '"entities": string[] (companies, people, places, products; max 6), ' +
             '"topic": string (short label e.g. "Elections", "Markets", "Research", "Transfers"), ' +
-            '"impact": number (0-100 newsworthiness for a general news reader) }.',
+            '"impact": number (0-100 newsworthiness for a general news reader; calibrate: ' +
+            "80-100 major breaking story, 55-79 notable development, 30-54 routine or incremental, " +
+            "0-29 promotional/listicle/filler) }.",
         },
         {
           role: "user",
@@ -101,5 +104,10 @@ function fallbackSummary(input: EnrichInput): string {
 
 /** Deterministic enrichment with no API call — used when AI is off or over budget. */
 export function fallbackEnrichment(input: EnrichInput): Enrichment {
-  return { summary: fallbackSummary(input), entities: [], topic: "General", impact: 50 };
+  return {
+    summary: fallbackSummary(input),
+    entities: [],
+    topic: "General",
+    impact: estimateNewsworthiness(input.title, input.content),
+  };
 }

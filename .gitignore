@@ -43,3 +43,9 @@ next-env.d.ts
 
 # Watermarked Freepik preview kept local-only (theme recreates the look in CSS)
 public/paper.jpg
+
+# Throwaway verification/backfill scripts (run locally, never shipped)
+*.tmp.ts
+
+# Local Claude Code tooling
+.claude/

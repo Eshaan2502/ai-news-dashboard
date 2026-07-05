@@ -5,6 +5,7 @@ import { sources, newsItems, type Source } from "../db/schema";
 import { fetchFeed } from "./fetcher";
 import { normalizeItem, type NormalizedItem } from "./normalize";
 import { Deduper, type IndexItem } from "./dedup";
+import { classifyJunk } from "./heuristics";
 import { computeImpact } from "./score";
 import { AI_ENABLED, embed, enrich, fallbackEnrichment } from "../ai/openai";
 import { mapWithConcurrency, truncate } from "../utils";
@@ -21,6 +22,7 @@ export type IngestStats = {
   sourcesFailed: number;
   fetched: number;
   skippedExisting: number;
+  filteredJunk: number;
   inserted: number;
   duplicates: number;
   enriched: number;
@@ -94,6 +96,7 @@ export async function runIngestion(): Promise<IngestStats> {
   const seenThisRun = new Set<string>();
   let fetchedCount = 0;
   let skippedExisting = 0;
+  let filteredJunk = 0;
   let sourcesOk = 0;
   let sourcesFailed = 0;
 
@@ -117,6 +120,11 @@ export async function runIngestion(): Promise<IngestStats> {
     for (const item of normalized) {
       if (existingUrls.has(item.canonicalUrl) || seenThisRun.has(item.canonicalUrl)) {
         skippedExisting++;
+        continue;
+      }
+      // Junk gate: drop obvious non-news before spending on embed/enrich/insert.
+      if (classifyJunk(item.title, item.rawContent)) {
+        filteredJunk++;
         continue;
       }
       seenThisRun.add(item.canonicalUrl);
@@ -202,6 +210,10 @@ export async function runIngestion(): Promise<IngestStats> {
     isDuplicate: c.isDuplicate,
     embedding: c.embedding,
     enriched: c.enriched,
+    // Feed-provided full text pre-fills the reader cache — no scrape needed.
+    extractedContent: c.item.fullBlocks,
+    extractionStatus: c.item.fullBlocks ? "feed" : null,
+    extractedAt: c.item.fullBlocks ? new Date() : null,
   }));
 
   const insertedUrls = new Set<string>();
@@ -240,6 +252,7 @@ export async function runIngestion(): Promise<IngestStats> {
     sourcesFailed,
     fetched: fetchedCount,
     skippedExisting,
+    filteredJunk,
     inserted,
     duplicates,
     enriched: enrichedCount,

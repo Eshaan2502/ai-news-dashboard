@@ -28,7 +28,11 @@ Sources ──▶ Ingestion pipeline ──▶ Postgres+pgvector ──▶ API r
   (Reddit/YouTube reject default agents), then parses with `rss-parser`. Never throws —
   returns a tagged `{ ok, items } | { ok:false, error }`, so one bad feed can't fail the run.
 - **`normalize.ts`** — → `{ title, url, canonicalUrl, author, publishedAt, rawContent,
-  imageUrl }`; HTML-stripped, date-parsed, image extracted from media/enclosure/`<img>`.
+  fullBlocks, imageUrl }`; HTML-stripped, date-parsed, image extracted from
+  media/enclosure/`<img>`. When the feed ships the whole article in `content:encoded`
+  (WordPress and most company blogs), it is parsed into reader blocks (`fullBlocks`) and
+  stored as the pre-filled reader cache (`extraction_status = "feed"`) — those articles
+  never need scraping.
 - **`dedup.ts`** — in-memory near-duplicate detector (see §4).
 - **`score.ts`** — impact score (see §5).
 - **`run.ts`** — orchestrates a full pass with bounded concurrency and returns run stats.
@@ -58,13 +62,19 @@ LinkedIn API / WhatsApp Business is a one-function change in `deliver()`.
 
 1. Load active sources + a skip-set of known canonical URLs + a 14-day dedup index.
 2. **Fetch** all feeds concurrently (limit 6); record per-source `last_status`.
-3. **Normalize**; drop items already seen (by canonical URL) this run or in the DB.
+3. **Normalize**; drop items already seen (by canonical URL) this run or in the DB, then drop
+   junk (`heuristics.ts`: shopping deals, sponsored posts, puzzle hints, horoscopes, stubs)
+   before spending anything on them.
 4. **Embed** each novel candidate (`text-embedding-3-small`) — cheap; enables semantic dedup.
 5. **Classify** sequentially against the index → `cluster_id` + `is_duplicate` (order matters
    so intra-run duplicates cluster correctly).
 6. **Enrich** the top `ENRICH_LIMIT` canonical items with one JSON LLM call each; the rest get
-   deterministic fallbacks.
+   deterministic fallbacks (heuristic newsworthiness — not a flat score).
 7. **Score** and **insert** (`onConflictDoNothing` on canonical URL as a final guard).
+
+At read time, browsing views (home rows, topic feeds) apply an importance floor
+(`MIN_IMPACT_SCORE`, default 45) so low-impact filler never reaches the page; explicit
+lookups — search, a chosen source, Favorites — bypass the floor.
 
 ## 4. Deduplication & clustering
 

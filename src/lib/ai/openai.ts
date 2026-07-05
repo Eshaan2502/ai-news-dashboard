@@ -95,6 +95,71 @@ export async function enrich(input: EnrichInput): Promise<Enrichment> {
   }
 }
 
+/* ─────────────────────────── LinkedIn post ─────────────────────────── */
+
+export type LinkedInPostInput = {
+  title: string;
+  summary: string | null;
+  content: string;
+  sourceName: string;
+  topic: string | null;
+};
+
+export type LinkedInPost = { post: string; aiGenerated: boolean };
+
+/**
+ * Draft a LinkedIn post that analyzes the article — hook, why it matters,
+ * discussion prompt, hashtags. Fallback: a simple deterministic draft from
+ * the title + summary so sharing still works without an API key.
+ */
+export async function generateLinkedInPost(input: LinkedInPostInput): Promise<LinkedInPost> {
+  const c = client();
+  if (!c) return { post: fallbackLinkedInPost(input), aiGenerated: false };
+
+  try {
+    const res = await c.chat.completions.create({
+      model: MODEL,
+      temperature: 0.7,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You write LinkedIn posts for a professional audience. Given a news article, " +
+            "write a post analyzing it: open with a one-line hook, then 2-3 short paragraphs " +
+            "on what happened and why it matters, close with a takeaway or question that " +
+            "invites discussion, then 3-5 relevant hashtags on the final line. " +
+            "Plain text only — no markdown, at most one emoji. Under 1300 characters. " +
+            "Write in first person as a professional sharing their take. " +
+            "Do NOT include any URL — the article link is appended separately.",
+        },
+        {
+          role: "user",
+          content:
+            `Source: ${input.sourceName}\nTopic: ${input.topic ?? "General"}\nTitle: ${input.title}\n` +
+            `Summary: ${input.summary ?? ""}\n\nContent:\n${truncate(input.content, 3500)}`,
+        },
+      ],
+    });
+    const post = res.choices[0]?.message?.content?.trim();
+    if (!post) return { post: fallbackLinkedInPost(input), aiGenerated: false };
+    return { post: truncate(post, 2800), aiGenerated: true };
+  } catch (e) {
+    console.warn("generateLinkedInPost() failed, using fallback:", e instanceof Error ? e.message : e);
+    return { post: fallbackLinkedInPost(input), aiGenerated: false };
+  }
+}
+
+function fallbackLinkedInPost(input: LinkedInPostInput): string {
+  const topicTag = (input.topic ?? "News").replace(/[^\p{L}\p{N}]/gu, "");
+  const parts = [
+    `Worth a read: "${input.title}" (via ${input.sourceName}).`,
+    input.summary?.trim() ?? "",
+    "Sharing for anyone following this space — curious what others make of it.",
+    `#News${topicTag && topicTag !== "News" ? ` #${topicTag}` : ""}`,
+  ];
+  return parts.filter(Boolean).join("\n\n");
+}
+
 function fallbackSummary(input: EnrichInput): string {
   const text = input.content?.trim() || input.title;
   const sentences = text.match(/[^.!?]+[.!?]+/g);

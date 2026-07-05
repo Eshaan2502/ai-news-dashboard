@@ -6,6 +6,7 @@ import { requireOnboardedUser } from "@/lib/db/user";
 import { topicColor } from "@/lib/ui";
 import { ArticleBody, ReaderSkeleton } from "@/components/ArticleBody";
 import { FavoriteButton } from "@/components/FavoriteButton";
+import { ShareActions } from "@/components/ShareActions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -50,6 +51,12 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
           </span>
           <span className="ml-auto flex items-center gap-1">
             <FavoriteButton newsItemId={article.id} initialFavorite={article.isFavorite} />
+            <ShareActions
+              newsItemId={article.id}
+              title={article.title}
+              url={article.url}
+              summary={article.summary}
+            />
             <a
               href={article.url}
               target="_blank"

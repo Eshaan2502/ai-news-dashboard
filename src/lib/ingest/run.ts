@@ -39,7 +39,7 @@ const RECENT_WINDOW_DAYS = 14;
 export async function runIngestion(): Promise<IngestStats> {
   const start = Date.now();
   const itemsPerSource = Number(process.env.INGEST_ITEMS_PER_SOURCE ?? 15);
-  const enrichLimit = Number(process.env.ENRICH_LIMIT ?? 40);
+  const enrichLimit = Number(process.env.ENRICH_LIMIT ?? 80);
 
   const activeSources = await db.select().from(sources).where(eq(sources.active, true));
 
@@ -84,7 +84,8 @@ export async function runIngestion(): Promise<IngestStats> {
     enriched: boolean;
     summary: string;
     entities: string[];
-    topic: string;
+    topic: string; // authoritative: inherited from the source
+    modelLabel: string; // the model's free-form topic label (kept in tags)
     impact: number;
   };
   const candidates: Candidate[] = [];
@@ -128,7 +129,8 @@ export async function runIngestion(): Promise<IngestStats> {
         enriched: false,
         summary: "",
         entities: [],
-        topic: "General",
+        topic: src.topic,
+        modelLabel: "",
         impact: 50,
       });
     }
@@ -172,7 +174,7 @@ export async function runIngestion(): Promise<IngestStats> {
     const result = useAI ? await enrich(input) : fallbackEnrichment(input);
     c.summary = result.summary;
     c.entities = result.entities;
-    c.topic = result.topic;
+    c.modelLabel = result.topic; // topic itself stays source-derived
     c.impact = result.impact;
     c.enriched = useAI;
   });
@@ -192,7 +194,7 @@ export async function runIngestion(): Promise<IngestStats> {
     canonicalUrl: c.item.canonicalUrl,
     imageUrl: c.item.imageUrl,
     publishedAt: c.item.publishedAt,
-    tags: c.topic ? [c.topic] : [],
+    tags: [...new Set([c.topic, c.modelLabel].filter((t) => t && t !== "General"))],
     entities: c.entities,
     topic: c.topic,
     impactScore: computeImpact(c.impact, c.src.weight, c.item.publishedAt),

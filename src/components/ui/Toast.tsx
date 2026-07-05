@@ -24,9 +24,9 @@ const ICON = {
 } as const;
 
 const ACCENT = {
-  success: "text-emerald-400",
-  error: "text-red-400",
-  info: "text-primary",
+  success: "text-emerald-700",
+  error: "text-primary",
+  info: "text-accent",
 } as const;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {

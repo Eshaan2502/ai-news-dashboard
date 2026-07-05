@@ -1,177 +1,93 @@
-# 🧠 AI News Aggregation & Broadcasting Dashboard
+# 🗞️ Spectrum — News without the tunnel vision
 
-An MVP that **aggregates AI news from 20+ sources**, **deduplicates & clusters** related
-stories, **ranks them by impact**, and lets you **favorite** items and **broadcast** them to
-Email / LinkedIn / WhatsApp / Blog / Newsletter with **AI-generated, channel-tailored copy**.
+A personalized news reader that **aggregates 40+ sources across 8 topics** (AI, Technology,
+World & Politics, Business & Finance, Science, Sports, Entertainment, Health),
+**deduplicates & clusters** related stories, **summarizes them with AI**, and lays out a
+front page ordered by **your topic priorities** — with every article readable **on the site
+itself** via server-side full-text extraction.
 
-Built as a single, cohesive full-stack app: **Next.js 16 (App Router, TypeScript) · PostgreSQL + pgvector · OpenAI · Docker · Railway/Supabase-ready.**
+Built as a single full-stack app: **Next.js 16 (App Router, TypeScript) · PostgreSQL +
+pgvector · Auth.js (Google + guest) · OpenAI · Docker · Railway/Supabase-ready.**
 
 ---
 
-## ✨ What it does (mapped to the BRD)
+## ✨ Features
 
-| BRD requirement | How it's met |
+| Feature | How it works |
 |---|---|
-| Aggregate from ≥20 high-signal sources | 26 registered feeds (~22 actively ingesting): OpenAI, DeepMind, Google AI, HuggingFace, NVIDIA, AWS ML, arXiv ×3, BAIR, TechCrunch, Ars Technica, The Verge, Reddit, HN, YouTube… — fetched concurrently and resiliently. A few BRD-named sources (Anthropic, Meta AI, Stability) publish no public RSS and are registered but inactive. |
-| Normalize (title, summary, author, date, url) | `src/lib/ingest/normalize.ts` — HTML-stripped, date-parsed, image-extracted |
-| Deduplicate (≥0.9 precision) + cluster | Hybrid: URL canonicalization → fuzzy title (Jaccard) → **semantic cosine via embeddings**; near-dupes share a `cluster_id` |
-| AI summarization / captioning | OpenAI `gpt-4o-mini` for summaries, entities, topic & impact; per-channel broadcast copy |
-| Dashboard: feed + favorites, sortable, filters | Feed & Favorites pages; search, source/topic filters, sort by date/impact/source |
-| Favorites persisted in DB | `favorites` table, optimistic UI |
-| Broadcast (Email/LinkedIn/WhatsApp…) | Mocked delivery **+ real deep links** (`wa.me`, LinkedIn share, `mailto:`); every send logged to `broadcast_logs` |
-| ≤3 clicks to broadcast | Card → Broadcast → pick channel (2 clicks) |
-| Charts / insights / entity chips (Creativity) | KPI tiles, 3 validated charts, impact meters, entity chips, dedup badges |
-| Deployment-ready, Dockerized | `Dockerfile` + `docker-compose.yml` (app + pgvector + worker) + `railway.json` |
-
----
-
-## 🏗️ Architecture
-
-```
-                    ┌──────────────── 22 RSS / API sources ────────────────┐
-                    │ OpenAI · DeepMind · Anthropic · HF · arXiv · TC · … │
-                    └───────────────────────┬──────────────────────────────┘
-                                             │  scheduled (worker) / on-demand (Refresh)
-                            ┌────────────────▼─────────────────┐
-                            │  Ingestion pipeline (src/lib/ingest) │
-                            │  fetch → normalize → embed →         │
-                            │  dedup/cluster → AI-enrich → score   │
-                            └────────────────┬─────────────────┘
-                                             │
-                     ┌───────────────────────▼───────────────────────┐
-                     │      PostgreSQL + pgvector (Supabase)          │
-                     │  sources · news_items · favorites ·           │
-                     │  broadcast_logs · users                        │
-                     └───────────────────────┬───────────────────────┘
-                                             │  Drizzle ORM
-                     ┌───────────────────────▼───────────────────────┐
-                     │   Next.js API routes  (/api/news, /favorites,  │
-                     │   /broadcast, /ingest, /stats, /sources)       │
-                     └───────────────────────┬───────────────────────┘
-                                             │
-                     ┌───────────────────────▼───────────────────────┐
-                     │   React dashboard (Feed · Favorites · Charts)  │
-                     │            Broadcast → Email/LinkedIn/WhatsApp │
-                     └────────────────────────────────────────────────┘
-```
-
-Full write-up incl. the dedup algorithm & scoring: **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+| Guest or Google sign-in | Auth.js v5. Guests get a device-scoped identity (httpOnly cookie + DB row) — no account needed. Signing in with Google later migrates a guest's topics & saved stories automatically. |
+| Personalized front page | Onboarding topic picker with **priority ordering** — the order you choose is the order rows appear. Editable anytime in Settings. |
+| Trending row | Highest-impact stories of the last 48h across all topics (impact = model newsworthiness + source authority + recency). |
+| In-site article reader | Cards never link out. `/article/[id]` shows the AI summary instantly, then streams the full text — fetched from the publisher and extracted with Mozilla Readability, cached in Postgres, rendered as plain text blocks (no raw HTML → no XSS). Falls back to the feed excerpt when a publisher blocks extraction. |
+| AI enrichment | OpenAI `gpt-4o-mini` writes a ≤45-word neutral summary + entities + newsworthiness per story at ingest time (cost-capped by `ENRICH_LIMIT`). Runs fine without a key (extractive fallback). |
+| Dedup / clustering | URL canonicalization → fuzzy title (Jaccard) → semantic cosine via pgvector embeddings. |
+| Saved stories | Star any card; persisted per user (guest or Google) with optimistic UI. |
 
 ---
 
 ## 🚀 Quick start
 
-### Option A — Docker (one command; recommended)
-
-Requires Docker Desktop. Brings up Postgres (pgvector) + the app, runs migrations, seeds
-demo data, and starts serving.
+### Option A — Docker (one command)
 
 ```bash
-cp .env.example .env          # then paste your OPENAI_API_KEY (optional — works without it)
+cp .env.example .env          # fill in DATABASE_URL etc. (see table below)
 docker compose up --build     # → http://localhost:3000
-```
-
-To also run the scheduled ingestion worker:
-
-```bash
-docker compose --profile worker up --build
 ```
 
 ### Option B — Local dev (Node 20.9+)
 
 ```bash
 npm install
-cp .env.example .env          # set DATABASE_URL + OPENAI_API_KEY
+cp .env.example .env          # set DATABASE_URL (+ OPENAI_API_KEY, AUTH_SECRET)
 
 # Postgres with pgvector: use Supabase, or spin one up locally:
 docker compose up -d db
 
 npm run db:migrate            # create schema (+ pgvector, HNSW index)
-npm run db:seed               # 22 sources + demo user + demo articles
-npm run ingest                # (optional) pull live news now
+npm run db:seed               # register the ~50 topic-tagged sources
+npm run ingest                # pull live news now
 npm run dev                   # → http://localhost:3000
 ```
 
-> **No OpenAI key?** Everything still runs — summaries fall back to extractive text,
-> broadcast copy uses clean templates, and dedup degrades to URL + fuzzy-title matching.
+> **No OpenAI key?** Everything still runs — summaries fall back to extractive text and
+> dedup degrades to URL + fuzzy-title matching.
+> **No Google OAuth credentials?** The Google button shows as "not configured";
+> **Continue as guest** works fully without any setup.
 
 ---
 
 ## ⚙️ Configuration (`.env`)
 
+All secrets live in `.env`, which is **git-ignored** — never commit real values.
+`.env.example` documents every variable.
+
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Postgres URI. Supabase: use the **Transaction pooler** (port 6543). |
-| `OPENAI_API_KEY` | Enables real summaries, captions & semantic dedup. Blank = fallback mode. |
-| `OPENAI_MODEL` | Chat model (default `gpt-4o-mini`). |
-| `OPENAI_EMBED_MODEL` | Embeddings (default `text-embedding-3-small`, 1536-dim). |
+| `DIRECT_URL` | Optional session-mode URI (port 5432) for migrations/DDL. |
+| `AUTH_SECRET` | Signs session JWTs. Generate with `npx auth secret` or any 32+ char random string. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth (see **Google sign-in setup** below). Blank = guest-only. |
+| `OPENAI_API_KEY` | Enables real summaries & semantic dedup. Blank = fallback mode. |
+| `OPENAI_MODEL` / `OPENAI_EMBED_MODEL` | Defaults: `gpt-4o-mini` / `text-embedding-3-small`. |
 | `INGEST_ITEMS_PER_SOURCE` | Max items pulled per feed per run (default 15). |
-| `ENRICH_LIMIT` | Max new items sent to the LLM per run — cost guard (default 40). |
+| `ENRICH_LIMIT` | Max new items sent to the LLM per run — cost guard (default 80). |
 | `DEDUP_TITLE_THRESHOLD` / `DEDUP_COSINE_THRESHOLD` | Dedup sensitivity (0.82 / 0.88). |
 | `INGEST_INTERVAL_MINUTES` | Worker cadence (default 15). |
-| `INGEST_SECRET` | Auth for `POST /api/ingest` (the worker/cron path). |
+| `INGEST_SECRET` | Auth for `POST /api/ingest` (worker/cron path). **Set a real value in production.** |
 
 ---
 
-## 🔌 API
+## 🔐 Google sign-in setup
 
-| Method & path | Description |
-|---|---|
-| `GET /api/news` | Feed. Query: `q, sourceId, topic, category, sort, includeDuplicates, favoritesOnly, days, limit, offset` |
-| `GET /api/favorites` · `POST` · `DELETE /api/favorites/:newsItemId` | List / add / remove favorites |
-| `POST /api/broadcast` | Generate channel copy, (mock) deliver, log. Body: `{ newsItemId, platform, recipient?, content? }` |
-| `GET /api/broadcast` | Recent broadcast history |
-| `GET /api/stats` | KPI totals + chart aggregates (by day / source / topic / category) |
-| `GET /api/sources` | Registered sources (+ counts) and topics |
-| `POST /api/ingest` | Trigger an ingestion pass (needs `x-ingest-secret`) |
-
----
-
-## 🗄️ Database schema
-
-`sources`, `news_items` (with `embedding vector(1536)`, `cluster_id`, `is_duplicate`,
-`impact_score`), `favorites`, `broadcast_logs`, `users`. DDL lives in
-[`drizzle/0000_init.sql`](./drizzle/0000_init.sql); the Drizzle model is
-[`src/lib/db/schema.ts`](./src/lib/db/schema.ts).
-
----
-
-## 🧠 How dedup, AI & scoring work (short version)
-
-- **Dedup / clustering** — for each new item: canonicalize the URL (drop `utm_*`, sort
-  params), then compare against a rolling 14-day index by **fuzzy title (Jaccard ≥ 0.82)**
-  and **embedding cosine (≥ 0.88)**. A match inherits the matched item's `cluster_id` and is
-  flagged `is_duplicate`; the feed shows one canonical card with an "N sources" badge.
-- **AI enrichment** — the top items per run (bounded by `ENRICH_LIMIT`) get a 1-2 sentence
-  summary, up to 6 entities, a topic label, and a 0-100 newsworthiness estimate in a single
-  JSON call.
-- **Impact score** = `0.6 × model_newsworthiness + source_authority(0-20) + recency(0-20)`,
-  used for sorting and the charts.
-
----
-
-## 📁 Project structure
-
-```
-src/
-├─ app/                     # pages (Feed, Favorites), API routes, server action
-│  ├─ api/{news,favorites,broadcast,ingest,stats,sources}/
-│  ├─ page.tsx · favorites/page.tsx · layout.tsx · actions.ts
-├─ components/              # NavBar, FeedView, NewsCard, FilterBar, BroadcastModal,
-│  │                        # StatTiles, InsightsPanel (charts), ui/*
-├─ lib/
-│  ├─ db/                   # schema, client, queries, migrate, seed, demo-data
-│  ├─ ingest/               # sources, fetcher, normalize, dedup, score, run, cli
-│  ├─ ai/openai.ts          # summaries, captions, embeddings (+ fallbacks)
-│  ├─ broadcast/            # mocked delivery + real deep links
-│  └─ utils · types · constants · ui · client-api · http
-└─ worker/index.ts          # scheduled ingestion loop
-drizzle/0000_init.sql · Dockerfile · docker-compose.yml · railway.json
-```
-
-## 📜 Scripts
-
-`dev` · `build` · `start` · `db:migrate` · `db:seed` · `db:setup` · `ingest` · `worker` · `lint`
+1. [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) →
+   **Create credentials → OAuth client ID → Web application**.
+2. Add **Authorized redirect URIs** (one per environment):
+   - `http://localhost:3000/api/auth/callback/google` (local dev)
+   - `https://<your-production-domain>/api/auth/callback/google` (deployed site)
+3. Put the client ID/secret in `.env` locally and in your host's environment variables in
+   production.
+4. So that *anyone* can sign in (not just you): OAuth consent screen → **Publish app**
+   (Testing mode only allows listed test users).
 
 ---
 
@@ -179,20 +95,69 @@ drizzle/0000_init.sql · Dockerfile · docker-compose.yml · railway.json
 
 1. **Supabase** → create a project → Database → Extensions → enable **`vector`**. Copy the
    **Transaction pooler** connection string.
-2. **Railway** → New Project → Deploy from repo (it uses the `Dockerfile`). Set env vars:
-   `DATABASE_URL` (Supabase pooler URI), `OPENAI_API_KEY`, `INGEST_SECRET`. On boot the
-   container runs migrations + seed automatically.
-3. *(Optional)* add a second Railway service from the same repo with start command
+2. **Railway** → New Project → Deploy from this repo (uses the `Dockerfile`). Set env vars:
+   `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+   `OPENAI_API_KEY`, `INGEST_SECRET`. Migrations + seed run automatically on boot.
+3. Add your Railway domain as a Google OAuth redirect URI (step 2 above) and publish the
+   consent screen.
+4. *(Optional)* add a second Railway service from the same repo with start command
    `npm run worker` (set `RUN_MIGRATIONS=false`) for scheduled ingestion — or use Railway
    Cron to `POST /api/ingest` with the `x-ingest-secret` header.
 
+Production notes: sessions are JWT (no session table needed); the guest cookie is
+`Secure` + `httpOnly` in production; the public Refresh button is identity-gated and
+rate-limited server-side (5-min cooldown) so anonymous traffic can't run up LLM costs.
+
 ---
 
-## ✅ Acceptance criteria
+## 🔌 API
 
-- [x] Working dashboard with real **and** mocked news (demo seed + live ingestion)
-- [x] Favorites system functioning (persisted, optimistic)
-- [x] Broadcast actions simulated (Email/LinkedIn/WhatsApp) with confirmations + real deep links
-- [x] Clean architecture explanation ([ARCHITECTURE.md](./ARCHITECTURE.md))
-- [x] Deployment instructions included
-- [x] Runs via Docker (`docker compose up --build`)
+| Method & path | Description |
+|---|---|
+| `GET /api/news` | Feed (requires guest/Google identity). Query: `q, sourceId, topic, sort, includeDuplicates, favoritesOnly, days, limit, offset` |
+| `GET /api/favorites` · `POST` · `DELETE /api/favorites/:newsItemId` | List / add / remove saved stories |
+| `GET/POST /api/auth/*` | Auth.js (Google OAuth) routes |
+| `POST /api/ingest` | Trigger an ingestion pass (needs `x-ingest-secret`) |
+
+---
+
+## 🗄️ Database schema
+
+`sources` (with a fixed `topic` per feed), `news_items` (with `embedding vector(1536)`,
+`cluster_id`, `impact_score`, and the reader's `extracted_content` cache), `users`
+(guests + Google accounts, `preferred_topics` = ordered priority list), `favorites`.
+DDL: [`drizzle/0000_init.sql`](./drizzle/0000_init.sql) +
+[`drizzle/0001_spectrum.sql`](./drizzle/0001_spectrum.sql); Drizzle model:
+[`src/lib/db/schema.ts`](./src/lib/db/schema.ts).
+
+Architecture write-up: **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
+---
+
+## 📁 Project structure
+
+```
+src/
+├─ app/
+│  ├─ welcome/               # landing: guest / Google sign-in (+ server actions)
+│  ├─ onboarding/            # topic picker with priority ordering
+│  ├─ (app)/                 # signed-in chrome (masthead)
+│  │  ├─ page.tsx            # front page: Trending + priority-ordered topic rows
+│  │  ├─ article/[id]/       # in-site reader (streamed full-text extraction)
+│  │  ├─ favorites/ · settings/
+│  ├─ api/{news,favorites,ingest,auth}/
+├─ components/               # Masthead, TopicSection, HorizontalRow, NewsCard,
+│                            # TopicPicker, ArticleBody, FavoriteButton, ui/*
+├─ lib/
+│  ├─ auth.ts                # Auth.js config (Google, JWT, guest→Google migration)
+│  ├─ extract.ts             # Readability + jsdom full-text extraction (cached)
+│  ├─ topics.ts              # the 8-topic taxonomy + colors
+│  ├─ db/                    # schema, client, queries, user resolution, migrate, seed
+│  ├─ ingest/                # sources registry, fetcher, normalize, dedup, score, run
+│  └─ ai/openai.ts           # summaries + embeddings (+ fallbacks)
+└─ worker/index.ts           # scheduled ingestion loop
+```
+
+## 📜 Scripts
+
+`dev` · `build` · `start` · `db:migrate` · `db:seed` · `db:setup` · `ingest` · `worker` · `lint`

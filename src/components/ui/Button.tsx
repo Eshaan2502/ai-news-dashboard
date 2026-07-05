@@ -11,7 +11,7 @@ const button = cva(
         secondary: "bg-surface text-foreground border border-border hover:bg-card-hover",
         outline: "border border-border-strong text-foreground hover:bg-card-hover",
         ghost: "text-muted hover:text-foreground hover:bg-card-hover",
-        danger: "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20",
+        danger: "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20",
       },
       size: {
         xs: "h-7 px-2 text-xs",

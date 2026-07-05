@@ -3,6 +3,12 @@
  * without pulling database code into the browser bundle.
  */
 
+/** One block of extracted article text — rendered as plain React elements. */
+export type ArticleBlock = {
+  type: "p" | "h2" | "h3" | "li" | "blockquote";
+  text: string;
+};
+
 export type FeedItemDTO = {
   id: number;
   title: string;
@@ -18,39 +24,17 @@ export type FeedItemDTO = {
   impactScore: number;
   isDuplicate: boolean;
   clusterId: string | null;
-  clusterSize: number;
   sourceName: string | null;
   sourceCategory: string | null;
+  sourceTopic: string | null;
   siteUrl: string | null;
   isFavorite: boolean;
 };
 
-export type SourceDTO = {
-  id: number;
-  name: string;
-  category: string;
-  active: boolean;
-  lastStatus: string | null;
-  lastFetchedAt: string | null;
-  itemCount: number;
-};
-
-export type Stats = {
-  totals: { items: number; sources: number; favorites: number; broadcasts: number; duplicates: number };
-  dedupRate: number;
-  avgImpact: number;
-  bySource: { name: string; count: number }[];
-  byTopic: { topic: string; count: number }[];
-  byCategory: { category: string; count: number }[];
-  byDay: { day: string; count: number }[];
-};
-
-export type BroadcastLogDTO = {
-  id: number;
-  platform: string;
-  status: string;
-  content: string | null;
-  createdAt: string;
-  title: string | null;
-  url: string | null;
+/** Everything the in-site reader needs for one article. */
+export type ArticleDTO = FeedItemDTO & {
+  rawContent: string | null;
+  extractedContent: ArticleBlock[] | null;
+  extractionStatus: string | null;
+  extractedAt: string | null;
 };

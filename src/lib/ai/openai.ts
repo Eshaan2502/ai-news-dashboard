@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { truncate } from "../utils";
-import type { BroadcastPlatform } from "../constants";
 
 /**
  * Thin OpenAI wrapper with graceful degradation.
@@ -66,11 +65,11 @@ export async function enrich(input: EnrichInput): Promise<Enrichment> {
         {
           role: "system",
           content:
-            "You are an AI-news editor. Given an article, respond ONLY with JSON: " +
+            "You are a news editor. Given an article, respond ONLY with JSON: " +
             '{ "summary": string (1-2 neutral sentences, <=45 words), ' +
-            '"entities": string[] (companies, models, people, products; max 6), ' +
-            '"topic": string (short label e.g. "Model Releases", "Funding", "Research", "Policy"), ' +
-            '"impact": number (0-100 newsworthiness for an AI professional) }.',
+            '"entities": string[] (companies, people, places, products; max 6), ' +
+            '"topic": string (short label e.g. "Elections", "Markets", "Research", "Transfers"), ' +
+            '"impact": number (0-100 newsworthiness for a general news reader) }.',
         },
         {
           role: "user",
@@ -103,84 +102,4 @@ function fallbackSummary(input: EnrichInput): string {
 /** Deterministic enrichment with no API call — used when AI is off or over budget. */
 export function fallbackEnrichment(input: EnrichInput): Enrichment {
   return { summary: fallbackSummary(input), entities: [], topic: "General", impact: 50 };
-}
-
-/* ─────────────────────── Broadcast content ─────────────────────── */
-
-export type BroadcastItem = {
-  title: string;
-  summary: string | null;
-  url: string;
-  sourceName: string | null;
-  entities?: string[] | null;
-};
-
-/**
- * Generate platform-tailored share content. Fallback: clean templates so the
- * broadcast flow is always demonstrable, key or not.
- */
-export async function generateBroadcastContent(
-  platform: BroadcastPlatform,
-  item: BroadcastItem,
-): Promise<string> {
-  const c = client();
-  if (!c) return fallbackBroadcast(platform, item);
-
-  const styleByPlatform: Record<BroadcastPlatform, string> = {
-    linkedin:
-      "Write an engaging LinkedIn post (≈90 words): a strong first-line hook, one insight on why it matters, then 3-4 relevant hashtags. Professional, no emoji spam.",
-    email:
-      "Write a concise newsletter blurb: a one-line subject prefixed 'Subject: ', a blank line, then 2-3 sentences of why it matters.",
-    whatsapp:
-      "Write a short, punchy WhatsApp share message (≤45 words) with 1-2 tasteful emoji and a clear reason to click.",
-    blog: "Write a 2-3 sentence blog intro paragraph that frames the story and invites reading more.",
-    newsletter:
-      "Write a single newsletter bullet: a bold-style lead phrase followed by one sentence of context.",
-  };
-
-  try {
-    const res = await c.chat.completions.create({
-      model: MODEL,
-      temperature: 0.7,
-      messages: [
-        {
-          role: "system",
-          content: `You craft share-ready copy for AI news. ${styleByPlatform[platform]} Always end with the URL on its own line. Do not invent facts beyond the summary.`,
-        },
-        {
-          role: "user",
-          content: `Title: ${item.title}\nSource: ${item.sourceName ?? "AI News"}\nSummary: ${
-            item.summary ?? ""
-          }\nURL: ${item.url}`,
-        },
-      ],
-    });
-    return res.choices[0]?.message?.content?.trim() || fallbackBroadcast(platform, item);
-  } catch (e) {
-    console.warn("generateBroadcastContent() failed, using fallback:", e instanceof Error ? e.message : e);
-    return fallbackBroadcast(platform, item);
-  }
-}
-
-function fallbackBroadcast(platform: BroadcastPlatform, item: BroadcastItem): string {
-  const src = item.sourceName ?? "AI News";
-  const summary = item.summary ?? "";
-  const tags = (item.entities ?? [])
-    .slice(0, 3)
-    .map((e) => "#" + e.replace(/[^A-Za-z0-9]/g, ""))
-    .join(" ");
-  switch (platform) {
-    case "linkedin":
-      return `🚀 ${item.title}\n\n${summary}\n\n(via ${src})\n${tags} #AI #MachineLearning\n${item.url}`;
-    case "email":
-      return `Subject: ${item.title}\n\n${summary}\n\nRead more (${src}): ${item.url}`;
-    case "whatsapp":
-      return `📰 *${item.title}*\n${summary}\n👉 ${item.url}`;
-    case "blog":
-      return `${item.title}\n\n${summary}\n\nOriginal report from ${src}: ${item.url}`;
-    case "newsletter":
-      return `• ${item.title} — ${summary} (${src}) ${item.url}`;
-    default:
-      return `${item.title}\n${item.url}`;
-  }
 }

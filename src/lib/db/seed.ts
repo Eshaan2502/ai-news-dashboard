@@ -1,18 +1,17 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { notInArray } from "drizzle-orm";
+import { notInArray, sql } from "drizzle-orm";
 import { db, client } from "./index";
-import { sources, users, newsItems } from "./schema";
+import { sources, newsItems } from "./schema";
 import { SOURCES } from "../ingest/sources";
 import { DEMO_ITEMS } from "./demo-data";
-import { DEMO_USER } from "../constants";
 import { canonicalizeUrl } from "../utils";
 
 /**
  * Idempotent seed:
- *   • upserts the 20+ registered sources
- *   • ensures the demo user exists
+ *   • upserts the registered sources (with their Spectrum topic)
  *   • inserts demo articles (skip with `--no-demo`) so the UI is populated offline
+ *   • backfills news_items.topic from each item's source
  *
  * Run with: npm run db:seed   (or: npm run db:seed -- --no-demo)
  */
@@ -28,6 +27,7 @@ async function seed() {
           name: s.name,
           siteUrl: s.siteUrl,
           category: s.category,
+          topic: s.topic,
           weight: s.weight,
           active: s.active ?? true,
         },
@@ -36,9 +36,6 @@ async function seed() {
   // Reconcile: drop sources no longer in the registry (e.g. changed feed URLs).
   await db.delete(sources).where(notInArray(sources.url, SOURCES.map((s) => s.url)));
   console.log(`  ✓ ${SOURCES.length} sources`);
-
-  console.log("→ Ensuring demo user…");
-  await db.insert(users).values(DEMO_USER).onConflictDoNothing({ target: users.email });
 
   const skipDemo = process.argv.includes("--no-demo");
   if (!skipDemo) {
@@ -84,6 +81,14 @@ async function seed() {
     }
     console.log(`  ✓ ${inserted} demo articles inserted (${DEMO_ITEMS.length - inserted} already existed)`);
   }
+
+  // Source topic is authoritative — align every item with its source's topic.
+  console.log("→ Backfilling item topics from sources…");
+  await db.execute(sql`
+    UPDATE news_items ni SET topic = s.topic
+    FROM sources s
+    WHERE ni.source_id = s.id AND ni.topic IS DISTINCT FROM s.topic
+  `);
 
   console.log("✓ Seed complete.");
   await client.end();

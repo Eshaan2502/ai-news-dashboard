@@ -1,59 +1,62 @@
 @import "tailwindcss";
 
 /*
-  Design system — "Signal" dark dashboard theme.
-  Semantic tokens mapped to Tailwind v4 utilities (bg-card, text-muted, …).
-  Built-in Tailwind palettes (slate, indigo, emerald, …) remain available.
+  Design system — "Spectrum" editorial theme.
+  Cream paper background, warm ink, serif masthead — a modern broadsheet.
+  Semantic tokens keep the Tailwind v4 utility names (bg-card, text-muted, …).
 */
 @theme {
-  --color-background: #0a0e17;
-  --color-surface: #10151f;
-  --color-card: #131a26;
-  --color-card-hover: #171f2e;
-  --color-border: #232c3d;
-  --color-border-strong: #2f3a4f;
-  --color-foreground: #e8ecf4;
-  --color-muted: #8b98ad;
-  --color-muted-foreground: #6b7688;
+  --color-background: #f5ecd9;
+  --color-surface: #efe4cc;
+  --color-card: #fffdf6;
+  --color-card-hover: #fbf4e4;
+  --color-border: #e3d4b6;
+  --color-border-strong: #c9b691;
+  --color-foreground: #2b2318;
+  --color-muted: #6e6350;
+  --color-muted-foreground: #988b71;
 
-  --color-primary: #6366f1;
-  --color-primary-hover: #7c7ff2;
-  --color-primary-foreground: #ffffff;
-  --color-accent: #22d3ee;
-
-  /* Categorical palette — validated (dataviz skill validator, dark surface):
-     passes lightness band, chroma floor, CVD separation, and contrast. */
-  --color-cat-1: #6366f1; /* indigo */
-  --color-cat-2: #0891b2; /* cyan   */
-  --color-cat-3: #d97706; /* amber  */
-  --color-cat-4: #ec4899; /* pink   */
-  --color-cat-5: #059669; /* emerald*/
-  --color-cat-6: #8b5cf6; /* violet */
+  --color-primary: #9a3b26; /* editorial oxblood */
+  --color-primary-hover: #7f2e1c;
+  --color-primary-foreground: #fffdf6;
+  --color-accent: #b98a2f; /* mustard gold */
 
   --radius-lg: 0.9rem;
   --radius-md: 0.6rem;
   --radius-sm: 0.4rem;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, "Times New Roman", serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background:
-    radial-gradient(1200px 600px at 85% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
-    radial-gradient(900px 500px at 5% 0%, rgba(34, 211, 238, 0.06), transparent 55%),
-    var(--color-background);
+  /* Cream paper + a whisper of grain (inline SVG noise, no external asset). */
+  background-color: var(--color-background);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
   color: var(--color-foreground);
   min-height: 100vh;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Thin, subtle scrollbars that fit the dark theme */
+/* Serif display helper for the masthead and headings */
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+/* Classic newspaper divider: thin double rule */
+.masthead-rule {
+  border-top: 1px solid var(--color-border-strong);
+  border-bottom: 3px double var(--color-border-strong);
+  height: 6px;
+}
+
+/* Thin, warm scrollbars */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-strong) transparent;
@@ -65,6 +68,15 @@ body {
 *::-webkit-scrollbar-thumb {
   background: var(--color-border-strong);
   border-radius: 999px;
+}
+
+/* Hide the scrollbar on horizontal card rows (chevrons handle navigation) */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Line clamps for card summaries */

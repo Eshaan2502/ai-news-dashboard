@@ -13,6 +13,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import type { ArticleBlock } from "../types";
 
 /**
  * sources — registered news feeds (RSS/API).
@@ -27,6 +28,7 @@ export const sources = pgTable(
     siteUrl: text("site_url"),
     type: text("type").notNull().default("rss"), // rss | api
     category: text("category").notNull().default("Media"), // Company | Research | Media | Community
+    topic: text("topic").notNull().default("Technology"), // one of the 8 Spectrum topics
     weight: real("weight").notNull().default(1),
     active: boolean("active").notNull().default(true),
     lastFetchedAt: timestamp("last_fetched_at", { withTimezone: true }),
@@ -63,6 +65,11 @@ export const newsItems = pgTable(
     isDuplicate: boolean("is_duplicate").notNull().default(false),
     embedding: vector("embedding", { dimensions: 1536 }),
     enriched: boolean("enriched").notNull().default(false),
+    // In-site reader cache: full text extracted from the original page,
+    // stored as safe text blocks (no HTML reaches the client).
+    extractedContent: jsonb("extracted_content").$type<ArticleBlock[]>(),
+    extractedAt: timestamp("extracted_at", { withTimezone: true }),
+    extractionStatus: text("extraction_status"), // ok | failed
   },
   (t) => [
     uniqueIndex("news_canonical_idx").on(t.canonicalUrl),
@@ -72,7 +79,13 @@ export const newsItems = pgTable(
   ],
 );
 
-/** users — minimal; a single demo user is seeded for the MVP. */
+/**
+ * users — guests (device-scoped, identified by the `spectrum_guest` cookie's
+ * UUID in `guestId`) and Google accounts (identified by email). Guests get a
+ * synthetic `guest-<uuid>@guest.spectrum.local` email to satisfy the unique
+ * email index. `preferredTopics` is an ordered array — index = priority,
+ * and it drives homepage row order.
+ */
 export const users = pgTable(
   "users",
   {
@@ -80,9 +93,14 @@ export const users = pgTable(
     name: text("name").notNull(),
     email: text("email").notNull(),
     role: text("role").notNull().default("user"),
+    isGuest: boolean("is_guest").notNull().default(false),
+    guestId: uuid("guest_id"),
+    image: text("image"),
+    preferredTopics: jsonb("preferred_topics").$type<string[]>(),
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("users_email_idx").on(t.email)],
+  (t) => [uniqueIndex("users_email_idx").on(t.email), uniqueIndex("users_guest_id_idx").on(t.guestId)],
 );
 
 /** favorites — a user's saved items (one row per user+item). */
@@ -101,21 +119,6 @@ export const favorites = pgTable(
   (t) => [uniqueIndex("favorites_user_item_idx").on(t.userId, t.newsItemId)],
 );
 
-/** broadcast_logs — every broadcast attempt (delivery is mocked in the MVP). */
-export const broadcastLogs = pgTable("broadcast_logs", {
-  id: serial("id").primaryKey(),
-  favoriteId: integer("favorite_id").references(() => favorites.id, { onDelete: "set null" }),
-  newsItemId: integer("news_item_id")
-    .references(() => newsItems.id, { onDelete: "cascade" })
-    .notNull(),
-  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
-  platform: text("platform").notNull(), // email | linkedin | whatsapp | blog | newsletter
-  content: text("content"), // AI-generated post/caption/message
-  recipient: text("recipient"),
-  status: text("status").notNull().default("sent"), // sent | failed | queued
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 /* ---------- relations (for typed joins via db.query) ---------- */
 
 export const sourcesRelations = relations(sources, ({ many }) => ({
@@ -132,10 +135,6 @@ export const favoritesRelations = relations(favorites, ({ one }) => ({
   newsItem: one(newsItems, { fields: [favorites.newsItemId], references: [newsItems.id] }),
 }));
 
-export const broadcastLogsRelations = relations(broadcastLogs, ({ one }) => ({
-  newsItem: one(newsItems, { fields: [broadcastLogs.newsItemId], references: [newsItems.id] }),
-}));
-
 /* ---------- inferred types ---------- */
 
 export type Source = typeof sources.$inferSelect;
@@ -144,5 +143,3 @@ export type NewsItem = typeof newsItems.$inferSelect;
 export type NewNewsItem = typeof newsItems.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type Favorite = typeof favorites.$inferSelect;
-export type BroadcastLog = typeof broadcastLogs.$inferSelect;
-export type NewBroadcastLog = typeof broadcastLogs.$inferInsert;

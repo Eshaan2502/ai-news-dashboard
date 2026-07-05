@@ -38,8 +38,16 @@ function toCurrentUser(u: User): CurrentUser {
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   // 1. Google session (Auth.js). Imported lazily so modules that only need
   // the guest path (or constants) don't pull the whole auth stack in.
-  const { auth } = await import("../auth");
-  const session = await auth();
+  // Fail-soft: if Auth.js is misconfigured (e.g. AUTH_SECRET not set on the
+  // host yet), fall through to the guest path instead of taking down every
+  // page — the site stays usable in guest-only mode.
+  let session = null;
+  try {
+    const { auth } = await import("../auth");
+    session = await auth();
+  } catch (e) {
+    console.warn("Auth.js session check failed (guest-only mode):", e instanceof Error ? e.message : e);
+  }
   if (session?.user) {
     const uid = Number(session.user.id);
     if (Number.isInteger(uid) && uid > 0) {

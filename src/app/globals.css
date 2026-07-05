@@ -35,9 +35,25 @@ html {
 }
 
 body {
-  /* Cream paper + a whisper of grain (inline SVG noise, no external asset). */
+  /*
+    Aged-newsprint background, layered top→bottom:
+      1. a whisper of fine grain (inline SVG noise, no external asset);
+      2. a cream wash that keeps the theme tone dominant and mutes the
+         texture (and its faint stock watermark) to a subtle aged feel;
+      3. the vintage newspaper photo, fixed & covering the viewport.
+    The cream --color-background stays as the base/fallback if the image
+    is missing (it is git-ignored — see .gitignore), so the app degrades
+    gracefully to the flat cream + grain.
+  */
   background-color: var(--color-background);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+    linear-gradient(rgba(245, 236, 217, 0.72), rgba(245, 236, 217, 0.72)),
+    url("/newspaper-texture.jpg");
+  background-size: 140px 140px, cover, cover;
+  background-position: 0 0, center, center;
+  background-repeat: repeat, no-repeat, no-repeat;
+  background-attachment: scroll, fixed, fixed;
   color: var(--color-foreground);
   min-height: 100vh;
   font-family: var(--font-sans);

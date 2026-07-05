@@ -103,49 +103,72 @@ export type LinkedInPostInput = {
   content: string;
   sourceName: string;
   topic: string | null;
+  /** When set, revise `draft` per `instruction` instead of writing from scratch. */
+  revision?: { draft: string; instruction: string };
 };
 
 export type LinkedInPost = { post: string; aiGenerated: boolean };
 
+const LINKEDIN_WRITER =
+  "You write LinkedIn posts for a professional audience. The post analyzes a news article: " +
+  "a one-line hook, 2-3 short paragraphs on what happened and why it matters, a closing " +
+  "takeaway or question that invites discussion, then 3-5 relevant hashtags on the final line. " +
+  "Plain text only — no markdown, at most one emoji. Under 1300 characters. " +
+  "Write in first person as a professional sharing their take. " +
+  "Do NOT include any URL — the article link is appended separately.";
+
 /**
- * Draft a LinkedIn post that analyzes the article — hook, why it matters,
- * discussion prompt, hashtags. Fallback: a simple deterministic draft from
- * the title + summary so sharing still works without an API key.
+ * Draft (or revise) a LinkedIn post that analyzes the article. With
+ * `revision` set, the model applies the reader's requested changes to their
+ * current draft, staying grounded in the article. Fallback without an API
+ * key: a deterministic draft, or the unchanged draft for revisions — the
+ * caller detects the no-op via `aiGenerated`.
  */
 export async function generateLinkedInPost(input: LinkedInPostInput): Promise<LinkedInPost> {
   const c = client();
-  if (!c) return { post: fallbackLinkedInPost(input), aiGenerated: false };
+  if (!c) {
+    return input.revision
+      ? { post: input.revision.draft, aiGenerated: false }
+      : { post: fallbackLinkedInPost(input), aiGenerated: false };
+  }
+
+  const articleContext =
+    `Source: ${input.sourceName}\nTopic: ${input.topic ?? "General"}\nTitle: ${input.title}\n` +
+    `Summary: ${input.summary ?? ""}\n\nContent:\n${truncate(input.content, 3500)}`;
+
+  const messages = input.revision
+    ? [
+        {
+          role: "system" as const,
+          content:
+            LINKEDIN_WRITER +
+            " You are revising the reader's existing draft: apply their requested changes, " +
+            "keep everything factually grounded in the article, and respond with ONLY the " +
+            "revised post text. Follow the requested changes even when they bend the format " +
+            "rules above (e.g. no hashtags, different length).",
+        },
+        {
+          role: "user" as const,
+          content:
+            `${articleContext}\n\nCurrent draft:\n${input.revision.draft}\n\n` +
+            `Requested changes: ${input.revision.instruction}`,
+        },
+      ]
+    : [
+        { role: "system" as const, content: LINKEDIN_WRITER },
+        { role: "user" as const, content: articleContext },
+      ];
 
   try {
-    const res = await c.chat.completions.create({
-      model: MODEL,
-      temperature: 0.7,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You write LinkedIn posts for a professional audience. Given a news article, " +
-            "write a post analyzing it: open with a one-line hook, then 2-3 short paragraphs " +
-            "on what happened and why it matters, close with a takeaway or question that " +
-            "invites discussion, then 3-5 relevant hashtags on the final line. " +
-            "Plain text only — no markdown, at most one emoji. Under 1300 characters. " +
-            "Write in first person as a professional sharing their take. " +
-            "Do NOT include any URL — the article link is appended separately.",
-        },
-        {
-          role: "user",
-          content:
-            `Source: ${input.sourceName}\nTopic: ${input.topic ?? "General"}\nTitle: ${input.title}\n` +
-            `Summary: ${input.summary ?? ""}\n\nContent:\n${truncate(input.content, 3500)}`,
-        },
-      ],
-    });
+    const res = await c.chat.completions.create({ model: MODEL, temperature: 0.7, messages });
     const post = res.choices[0]?.message?.content?.trim();
-    if (!post) return { post: fallbackLinkedInPost(input), aiGenerated: false };
+    if (!post) throw new Error("empty completion");
     return { post: truncate(post, 2800), aiGenerated: true };
   } catch (e) {
     console.warn("generateLinkedInPost() failed, using fallback:", e instanceof Error ? e.message : e);
-    return { post: fallbackLinkedInPost(input), aiGenerated: false };
+    return input.revision
+      ? { post: input.revision.draft, aiGenerated: false }
+      : { post: fallbackLinkedInPost(input), aiGenerated: false };
   }
 }
 

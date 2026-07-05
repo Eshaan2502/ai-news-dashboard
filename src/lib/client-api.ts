@@ -18,11 +18,12 @@ export async function removeFavorite(newsItemId: number) {
 
 export async function generateLinkedInPost(
   newsItemId: number,
+  revision?: { draft: string; instruction: string },
 ): Promise<{ post: string; aiGenerated: boolean }> {
   const res = await fetch(`/api/share/linkedin`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ newsItemId }),
+    body: JSON.stringify({ newsItemId, ...revision }),
   });
   if (!res.ok) throw new Error("Failed to generate LinkedIn post");
   return res.json();

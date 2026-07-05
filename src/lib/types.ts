@@ -31,6 +31,17 @@ export type FeedItemDTO = {
   isFavorite: boolean;
 };
 
+/**
+ * A search hit fetched live from the web when the corpus has no matches.
+ * Not ingested — no reader page, no favorites; the card links straight out.
+ */
+export type WebResultDTO = {
+  title: string;
+  url: string;
+  sourceName: string;
+  publishedAt: string | null;
+};
+
 /** Everything the in-site reader needs for one article. */
 export type ArticleDTO = FeedItemDTO & {
   rawContent: string | null;

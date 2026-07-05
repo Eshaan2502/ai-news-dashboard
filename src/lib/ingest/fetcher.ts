@@ -14,6 +14,8 @@ type FeedItem = Parser.Item & {
   mediaContent?: { $?: { url?: string } }[];
   mediaThumbnail?: { $?: { url?: string } };
   enclosure?: { url?: string };
+  /** RSS 2.0 <source> element — Google News sets it to the publisher name. */
+  sourceInfo?: string | { _?: string; $?: { url?: string } };
 };
 
 const parser: Parser<object, FeedItem> = new Parser({
@@ -22,6 +24,7 @@ const parser: Parser<object, FeedItem> = new Parser({
       ["content:encoded", "contentEncoded"],
       ["media:content", "mediaContent", { keepArray: true }],
       ["media:thumbnail", "mediaThumbnail"],
+      ["source", "sourceInfo"],
     ],
   },
 });

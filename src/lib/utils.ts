@@ -87,26 +87,56 @@ export function titleSimilarity(a: string, b: string): number {
 }
 
 /**
+ * Decode HTML entities feeds leave in text — numeric forms (&#8217;, &#x2019;)
+ * and the named ones publishers actually use. `&amp;` decodes first so
+ * double-escaped feeds (&amp;#8217;) resolve all the way down.
+ */
+export function decodeEntities(text: string): string {
+  return text
+    .replace(/&amp;/gi, "&")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => safeCodePoint(parseInt(dec, 10)))
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&apos;|&rsquo;|&lsquo;/gi, "'")
+    .replace(/&quot;|&ldquo;|&rdquo;/gi, '"')
+    .replace(/&mdash;/gi, "—")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&hellip;/gi, "…");
+}
+
+function safeCodePoint(code: number): string {
+  if (!Number.isFinite(code) || code > 0x10ffff) return " ";
+  if (code < 32 && code !== 9 && code !== 10) return " ";
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return " ";
+  }
+}
+
+/**
  * Strip HTML tags from feed content. Block-level closes become blank lines so
  * the excerpt keeps its paragraph structure (the reader splits on them).
  */
 export function stripHtml(html: string | null | undefined): string {
   if (!html) return "";
-  return html
+  const text = html
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<\/(p|div|h[1-6]|li|blockquote|tr|section|article)>|<br\s*\/?>/gi, "\n\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
-    .replace(/&quot;|&ldquo;|&rdquo;/g, '"')
-    .replace(/[^\S\n]+/g, " ")
-    .replace(/ ?\n ?/g, "\n")
-    .replace(/\n{2,}/g, "\n\n")
-    .trim();
+    .replace(/<[^>]+>/g, " ");
+  return (
+    decodeEntities(text)
+      // Double-escaped feeds (&lt;a …&gt; inside already-HTML content) only
+      // become tags after the entity decode above — strip those too.
+      .replace(/<\/?[a-z][^>]*>/gi, " ")
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/ ?\n ?/g, "\n")
+      .replace(/\n{2,}/g, "\n\n")
+      .trim()
+  );
 }
 
 /** Truncate text to a max length on a word boundary. */

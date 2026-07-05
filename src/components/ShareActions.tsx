@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, ExternalLink, Mail, RefreshCw, Sparkles, X } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Mail, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
 import { generateLinkedInPost } from "@/lib/client-api";
 import { Button } from "./ui/Button";
 import { useToast } from "./ui/Toast";
@@ -48,6 +48,8 @@ export function ShareActions({
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [post, setPost] = useState("");
   const [aiGenerated, setAiGenerated] = useState(true);
+  const [instruction, setInstruction] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
   const { toast } = useToast();
 
   const whatsappHref = `https://wa.me/?text=${encodeURIComponent(`${title}\n\n${url}`)}`;
@@ -70,6 +72,27 @@ export function ShareActions({
   const openModal = () => {
     setOpen(true);
     if (status === "idle" || status === "error") void generate();
+  };
+
+  /** Ask the AI to revise the current draft per the reader's instruction. */
+  const adjust = async () => {
+    const ask = instruction.trim();
+    if (!ask || adjusting) return;
+    setAdjusting(true);
+    try {
+      const result = await generateLinkedInPost(newsItemId, { draft: post, instruction: ask });
+      if (!result.aiGenerated && result.post === post) {
+        toast({ title: "AI is unavailable — the draft wasn't changed", variant: "error" });
+      } else {
+        setPost(result.post);
+        setInstruction("");
+        toast({ title: "Draft updated" });
+      }
+    } catch {
+      toast({ title: "Couldn't adjust the draft — try again", variant: "error" });
+    } finally {
+      setAdjusting(false);
+    }
   };
 
   // Escape closes the modal.
@@ -187,8 +210,9 @@ export function ShareActions({
                     value={post}
                     onChange={(e) => setPost(e.target.value)}
                     rows={10}
+                    disabled={adjusting}
                     aria-label="LinkedIn post text"
-                    className="w-full resize-y rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-primary/60"
+                    className="w-full resize-y rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-primary/60 disabled:animate-pulse disabled:opacity-60"
                   />
                   <p className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
                     <span>The article link is added at the end. Edit the draft as you like.</span>
@@ -196,21 +220,57 @@ export function ShareActions({
                       {fullText.length.toLocaleString()}/{LINKEDIN_MAX.toLocaleString()}
                     </span>
                   </p>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void adjust();
+                    }}
+                    className="mt-3 flex items-center gap-2"
+                  >
+                    <input
+                      value={instruction}
+                      onChange={(e) => setInstruction(e.target.value)}
+                      disabled={adjusting}
+                      aria-label="Describe changes to the draft"
+                      placeholder='Want changes? e.g. "shorter and punchier", "more formal, no emoji"'
+                      className="h-9 min-w-0 flex-1 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/60 disabled:opacity-60"
+                    />
+                    <Button
+                      type="submit"
+                      variant="secondary"
+                      size="sm"
+                      disabled={adjusting || !instruction.trim()}
+                      title="Have the AI revise the draft"
+                    >
+                      {adjusting ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-3.5 w-3.5" />
+                      )}
+                      {adjusting ? "Adjusting…" : "Adjust"}
+                    </Button>
+                  </form>
                 </>
               )}
             </div>
 
             {status === "ready" && (
               <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => void generate()} title="Write a new draft">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void generate()}
+                  disabled={adjusting}
+                  title="Write a new draft"
+                >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Regenerate
                 </Button>
-                <Button variant="secondary" size="sm" onClick={() => void copyPost()}>
+                <Button variant="secondary" size="sm" disabled={adjusting} onClick={() => void copyPost()}>
                   <Copy className="h-3.5 w-3.5" />
                   Copy post
                 </Button>
-                <Button size="sm" onClick={() => void openLinkedIn()}>
+                <Button size="sm" disabled={adjusting} onClick={() => void openLinkedIn()}>
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open LinkedIn
                 </Button>

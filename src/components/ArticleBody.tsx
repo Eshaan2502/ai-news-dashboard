@@ -1,6 +1,25 @@
 import { ExternalLink, Lock } from "lucide-react";
 import { getOrExtractContent } from "@/lib/extract";
-import type { ArticleDTO } from "@/lib/types";
+import { polishBlocks } from "@/lib/blocks";
+import type { ArticleBlock, ArticleDTO } from "@/lib/types";
+
+/** Consecutive list items render as one <ul>; everything else stays a block. */
+type Segment = { kind: "list"; items: string[] } | { kind: "block"; block: ArticleBlock };
+
+function toSegments(blocks: ArticleBlock[]): Segment[] {
+  const segments: Segment[] = [];
+  for (const block of blocks) {
+    const last = segments[segments.length - 1];
+    if (block.type === "li" && last?.kind === "list") last.items.push(block.text);
+    else if (block.type === "li") segments.push({ kind: "list", items: [block.text] });
+    else segments.push({ kind: "block", block });
+  }
+  return segments;
+}
+
+// Newspaper drop cap on the opening paragraph, sized off the body text.
+const DROP_CAP =
+  "first-letter:float-left first-letter:mr-2 first-letter:font-serif first-letter:text-[3.1em] first-letter:font-black first-letter:leading-[0.85] first-letter:text-primary";
 
 /**
  * Async server component: streams in the full article text (extracting on
@@ -8,47 +27,59 @@ import type { ArticleDTO } from "@/lib/types";
  * access" notice with a link out + feed preview → AI summary already shown above.
  */
 export async function ArticleBody({ article }: { article: ArticleDTO }) {
-  const blocks = await getOrExtractContent(article);
+  const stored = await getOrExtractContent(article);
+  const blocks = stored?.length ? polishBlocks(stored, article.title) : [];
 
-  if (blocks?.length) {
+  if (blocks.length) {
+    const segments = toSegments(blocks);
     return (
-      <div className="space-y-4">
-        {blocks.map((block, i) => {
+      <div className="space-y-5 break-words text-[1.0625rem] leading-[1.75] text-foreground">
+        {segments.map((segment, i) => {
+          if (segment.kind === "list") {
+            return (
+              <ul key={i} className="space-y-2.5">
+                {segment.items.map((item, j) => (
+                  <li key={j} className="flex gap-2.5 pl-1">
+                    <span aria-hidden className="select-none text-primary">
+                      •
+                    </span>
+                    <span className="text-pretty">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            );
+          }
+          const { block } = segment;
           switch (block.type) {
             case "h2":
               return (
-                <h2 key={i} className="pt-2 font-serif text-2xl font-bold text-foreground">
+                <h2 key={i} className="pt-4 font-serif text-2xl font-bold leading-snug text-balance">
                   {block.text}
                 </h2>
               );
             case "h3":
               return (
-                <h3 key={i} className="pt-1 font-serif text-xl font-bold text-foreground">
+                <h3 key={i} className="pt-3 font-serif text-xl font-bold leading-snug text-balance">
                   {block.text}
                 </h3>
-              );
-            case "li":
-              return (
-                <p key={i} className="flex gap-2 pl-4 leading-relaxed text-foreground">
-                  <span className="text-primary">•</span>
-                  <span>{block.text}</span>
-                </p>
               );
             case "blockquote":
               return (
                 <blockquote
                   key={i}
-                  className="border-l-2 border-primary pl-4 font-serif italic leading-relaxed text-muted"
+                  className="border-l-2 border-primary pl-4 font-serif text-lg italic leading-relaxed text-muted"
                 >
                   {block.text}
                 </blockquote>
               );
-            default:
+            default: {
+              const dropCap = i === 0 && /^[A-Za-z]/.test(block.text);
               return (
-                <p key={i} className="leading-relaxed text-foreground">
+                <p key={i} className={dropCap ? `text-pretty ${DROP_CAP}` : "text-pretty"}>
                   {block.text}
                 </p>
               );
+            }
           }
         })}
       </div>
@@ -88,7 +119,7 @@ export async function ArticleBody({ article }: { article: ArticleDTO }) {
             .split(/\n{2,}/)
             .filter((para) => para.trim())
             .map((para, i) => (
-              <p key={i} className="leading-relaxed text-foreground">
+              <p key={i} className="text-pretty break-words text-[1.0625rem] leading-[1.75] text-foreground">
                 {para.trim()}
               </p>
             ))}

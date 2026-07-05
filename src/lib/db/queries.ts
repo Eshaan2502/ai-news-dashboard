@@ -4,6 +4,7 @@ import { newsItems, sources, favorites } from "./schema";
 import type { SortOption } from "../constants";
 import type { ArticleDTO, FeedItemDTO } from "../types";
 import { AI_ENABLED, embed } from "../ai/openai";
+import { decodeEntities } from "../utils";
 
 export type { FeedItemDTO, ArticleDTO };
 
@@ -129,6 +130,9 @@ export async function getFeed(p: FeedParams): Promise<FeedItemDTO[]> {
 
   return rows.map((r) => ({
     ...r,
+    // Rows ingested before entity decoding may hold raw &#8217;-style entities.
+    title: decodeEntities(r.title),
+    summary: r.summary ? decodeEntities(r.summary) : r.summary,
     entities: (r.entities as string[]) ?? [],
     tags: (r.tags as string[]) ?? [],
     publishedAt: r.publishedAt ? new Date(r.publishedAt).toISOString() : null,
@@ -174,6 +178,10 @@ export async function getArticle(id: number, userId: number): Promise<ArticleDTO
   if (!r) return null;
   return {
     ...r,
+    // Rows ingested before entity decoding may hold raw &#8217;-style entities.
+    title: decodeEntities(r.title),
+    summary: r.summary ? decodeEntities(r.summary) : r.summary,
+    rawContent: r.rawContent ? decodeEntities(r.rawContent) : r.rawContent,
     entities: (r.entities as string[]) ?? [],
     tags: (r.tags as string[]) ?? [],
     publishedAt: r.publishedAt ? new Date(r.publishedAt).toISOString() : null,

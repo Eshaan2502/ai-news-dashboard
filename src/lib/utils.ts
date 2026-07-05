@@ -65,12 +65,16 @@ export function titleSimilarity(a: string, b: string): number {
   return inter / union;
 }
 
-/** Strip HTML tags and collapse whitespace from feed content. */
+/**
+ * Strip HTML tags from feed content. Block-level closes become blank lines so
+ * the excerpt keeps its paragraph structure (the reader splits on them).
+ */
 export function stripHtml(html: string | null | undefined): string {
   if (!html) return "";
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<\/(p|div|h[1-6]|li|blockquote|tr|section|article)>|<br\s*\/?>/gi, "\n\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -78,7 +82,9 @@ export function stripHtml(html: string | null | undefined): string {
     .replace(/&gt;/g, ">")
     .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
     .replace(/&quot;|&ldquo;|&rdquo;/g, '"')
-    .replace(/\s+/g, " ")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{2,}/g, "\n\n")
     .trim();
 }
 

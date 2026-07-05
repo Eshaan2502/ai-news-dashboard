@@ -1,4 +1,6 @@
 import { canonicalizeUrl, stripHtml, truncate } from "../utils";
+import { htmlToBlocks, isFullBody } from "../blocks";
+import type { ArticleBlock } from "../types";
 import type { FeedItem } from "./fetcher";
 
 export type NormalizedItem = {
@@ -8,6 +10,8 @@ export type NormalizedItem = {
   author: string | null;
   publishedAt: Date | null;
   rawContent: string;
+  /** Full article body when the feed ships it (content:encoded) — pre-fills the reader. */
+  fullBlocks: ArticleBlock[] | null;
   imageUrl: string | null;
 };
 
@@ -59,8 +63,24 @@ export function normalizeItem(item: FeedItem): NormalizedItem | null {
     author,
     publishedAt,
     rawContent,
+    fullBlocks: extractFeedBody(asText(item.contentEncoded) || asText(item.content)),
     imageUrl: extractImage(item, rawHtml),
   };
+}
+
+/**
+ * Many feeds (WordPress, The Verge, Ars, company blogs) ship the whole article
+ * in content:encoded. When it clearly is one — not a teaser — parse it into
+ * reader blocks now, so the article page needs no scraping at all.
+ */
+function extractFeedBody(html: string): ArticleBlock[] | null {
+  if (html.length < 2000) return null; // too short to be a full article — skip the parse
+  try {
+    const blocks = htmlToBlocks(html);
+    return isFullBody(blocks) ? blocks : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseDate(value: string): Date | null {

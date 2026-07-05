@@ -1,11 +1,11 @@
-import { Info } from "lucide-react";
+import { ExternalLink, Lock } from "lucide-react";
 import { getOrExtractContent } from "@/lib/extract";
 import type { ArticleDTO } from "@/lib/types";
 
 /**
  * Async server component: streams in the full article text (extracting on
- * first view). Fallback chain: extracted body → RSS excerpt + notice →
- * AI summary already shown above.
+ * first view). Fallback chain: extracted body → "publisher doesn't provide
+ * access" notice with a link out + feed preview → AI summary already shown above.
  */
 export async function ArticleBody({ article }: { article: ArticleDTO }) {
   const blocks = await getOrExtractContent(article);
@@ -56,29 +56,54 @@ export async function ArticleBody({ article }: { article: ArticleDTO }) {
   }
 
   const excerpt = article.rawContent?.trim();
+  const host = hostnameOf(article.url);
   return (
     <div className="space-y-4">
-      <p className="flex items-start gap-2 rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-        We couldn&apos;t load the full article from the publisher — showing the feed excerpt
-        instead. The original is one click away below.
-      </p>
-      {excerpt ? (
-        excerpt
-          .split(/\n{2,}/)
-          .filter((para) => para.trim())
-          .map((para, i) => (
-            <p key={i} className="leading-relaxed text-foreground">
-              {para.trim()}
-            </p>
-          ))
-      ) : (
-        <p className="text-sm italic text-muted">
-          No excerpt available for this story — the AI summary above is the short version.
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <p className="flex items-start gap-2 text-sm leading-relaxed text-foreground">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <span>
+            <strong>{article.sourceName ?? "This publisher"}</strong> doesn&apos;t provide access
+            to the full article outside their own site
+            {excerpt ? " — here's the preview they share, and the full story is one click away" : ""}
+            .
+          </span>
         </p>
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Read the full article on {host}
+        </a>
+      </div>
+      {excerpt && (
+        <>
+          <p className="pt-2 text-[11px] font-medium uppercase tracking-wider text-muted">
+            Preview from the publisher&apos;s feed
+          </p>
+          {excerpt
+            .split(/\n{2,}/)
+            .filter((para) => para.trim())
+            .map((para, i) => (
+              <p key={i} className="leading-relaxed text-foreground">
+                {para.trim()}
+              </p>
+            ))}
+        </>
       )}
     </div>
   );
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "the publisher's site";
+  }
 }
 
 export function ReaderSkeleton() {

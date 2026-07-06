@@ -65,7 +65,7 @@ function IconTechnology(props: IconProps) {
   );
 }
 
-/** World & Politics — a globe. */
+/** Politics — a globe. */
 function IconWorld(props: IconProps) {
   return (
     <Glyph {...props}>
@@ -142,7 +142,7 @@ function IconDot(props: IconProps) {
 const TOPIC_ICON: Record<Topic, (props: IconProps) => ReactNode> = {
   AI: IconAI,
   Technology: IconTechnology,
-  "World & Politics": IconWorld,
+  Politics: IconWorld,
   "Business & Finance": IconBusiness,
   Science: IconScience,
   Sports: IconSports,

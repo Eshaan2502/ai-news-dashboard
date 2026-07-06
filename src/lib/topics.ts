@@ -6,7 +6,7 @@
 export const TOPICS = [
   "AI",
   "Technology",
-  "World & Politics",
+  "Politics",
   "Business & Finance",
   "Science",
   "Sports",
@@ -24,7 +24,7 @@ export function isTopic(value: string): value is Topic {
 export const TOPIC_COLOR: Record<Topic, string> = {
   AI: "#9a3b26", // oxblood
   Technology: "#1f6f8b", // teal ink
-  "World & Politics": "#5b4a8a", // plum
+  Politics: "#5b4a8a", // plum
   "Business & Finance": "#3d6b35", // moss
   Science: "#2d5f7a", // slate blue
   Sports: "#b3541e", // burnt orange
@@ -36,7 +36,7 @@ export const TOPIC_COLOR: Record<Topic, string> = {
 export const TOPIC_BLURB: Record<Topic, string> = {
   AI: "Models, research labs, and the people building them",
   Technology: "Gadgets, software, and the industry at large",
-  "World & Politics": "Global affairs, elections, and policy",
+  Politics: "Global affairs, elections, and policy",
   "Business & Finance": "Markets, companies, and the economy",
   Science: "Discoveries from the lab to deep space",
   Sports: "Scores, transfers, and the stories behind them",

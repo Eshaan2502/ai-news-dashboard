@@ -1,7 +1,7 @@
 # 🗞️ Spectrum — News without the tunnel vision
 
 A personalized news reader that **aggregates 40+ sources across 8 topics** (AI, Technology,
-World & Politics, Business & Finance, Science, Sports, Entertainment, Health),
+Politics, Business & Finance, Science, Sports, Entertainment, Health),
 **deduplicates & clusters** related stories, **summarizes them with AI**, and lays out a
 front page ordered by **your topic priorities** — with every article readable **on the site
 itself** via server-side full-text extraction.

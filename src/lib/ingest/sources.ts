@@ -71,16 +71,16 @@ export const SOURCES: SourceSeed[] = [
   { name: "IEEE Spectrum", url: "https://spectrum.ieee.org/feeds/feed.rss", siteUrl: "https://spectrum.ieee.org/", type: "rss", category: "Media", topic: "Technology", weight: 1.3 },
   { name: "The Register", url: "https://www.theregister.com/headlines.atom", siteUrl: "https://www.theregister.com/", type: "rss", category: "Media", topic: "Technology", weight: 1.0 },
 
-  // ── World & Politics ────────────────────────────────────────────────────
-  { name: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml", siteUrl: "https://www.bbc.com/news/world", type: "rss", category: "Media", topic: "World & Politics", weight: 1.3 },
-  { name: "NYT World", url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", siteUrl: "https://www.nytimes.com/section/world", type: "rss", category: "Media", topic: "World & Politics", weight: 1.3 },
-  { name: "Washington Post World", url: "https://feeds.washingtonpost.com/rss/world", siteUrl: "https://www.washingtonpost.com/world/", type: "rss", category: "Media", topic: "World & Politics", weight: 1.3 },
-  { name: "The Economist", url: "https://www.economist.com/international/rss.xml", siteUrl: "https://www.economist.com/international/", type: "rss", category: "Media", topic: "World & Politics", weight: 1.3 },
-  { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml", siteUrl: "https://www.aljazeera.com/", type: "rss", category: "Media", topic: "World & Politics", weight: 1.2 },
-  { name: "NPR News", url: "https://feeds.npr.org/1001/rss.xml", siteUrl: "https://www.npr.org/", type: "rss", category: "Media", topic: "World & Politics", weight: 1.2 },
-  { name: "The Guardian World", url: "https://www.theguardian.com/world/rss", siteUrl: "https://www.theguardian.com/world", type: "rss", category: "Media", topic: "World & Politics", weight: 1.2 },
-  { name: "DW", url: "https://rss.dw.com/rdf/rss-en-all", siteUrl: "https://www.dw.com/en/", type: "rss", category: "Media", topic: "World & Politics", weight: 1.2 },
-  { name: "Politico", url: "https://rss.politico.com/politics-news.xml", siteUrl: "https://www.politico.com/", type: "rss", category: "Media", topic: "World & Politics", weight: 1.1 },
+  // ── Politics ────────────────────────────────────────────────────────────
+  { name: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml", siteUrl: "https://www.bbc.com/news/world", type: "rss", category: "Media", topic: "Politics", weight: 1.3 },
+  { name: "NYT World", url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", siteUrl: "https://www.nytimes.com/section/world", type: "rss", category: "Media", topic: "Politics", weight: 1.3 },
+  { name: "Washington Post World", url: "https://feeds.washingtonpost.com/rss/world", siteUrl: "https://www.washingtonpost.com/world/", type: "rss", category: "Media", topic: "Politics", weight: 1.3 },
+  { name: "The Economist", url: "https://www.economist.com/international/rss.xml", siteUrl: "https://www.economist.com/international/", type: "rss", category: "Media", topic: "Politics", weight: 1.3 },
+  { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml", siteUrl: "https://www.aljazeera.com/", type: "rss", category: "Media", topic: "Politics", weight: 1.2 },
+  { name: "NPR News", url: "https://feeds.npr.org/1001/rss.xml", siteUrl: "https://www.npr.org/", type: "rss", category: "Media", topic: "Politics", weight: 1.2 },
+  { name: "The Guardian World", url: "https://www.theguardian.com/world/rss", siteUrl: "https://www.theguardian.com/world", type: "rss", category: "Media", topic: "Politics", weight: 1.2 },
+  { name: "DW", url: "https://rss.dw.com/rdf/rss-en-all", siteUrl: "https://www.dw.com/en/", type: "rss", category: "Media", topic: "Politics", weight: 1.2 },
+  { name: "Politico", url: "https://rss.politico.com/politics-news.xml", siteUrl: "https://www.politico.com/", type: "rss", category: "Media", topic: "Politics", weight: 1.1 },
 
   // ── Business & Finance ──────────────────────────────────────────────────
   { name: "Financial Times", url: "https://www.ft.com/rss/home", siteUrl: "https://www.ft.com/", type: "rss", category: "Media", topic: "Business & Finance", weight: 1.3 },

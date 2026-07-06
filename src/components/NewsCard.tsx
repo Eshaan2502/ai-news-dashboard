@@ -38,6 +38,9 @@ export function NewsCard({
           <time dateTime={item.publishedAt ?? item.fetchedAt}>
             {timeAgo(item.publishedAt ?? item.fetchedAt)}
           </time>
+          {(item.coverage ?? 0) > 1 && (
+            <span style={{ color: "var(--color-primary)" }}> · {item.coverage} sources</span>
+          )}
         </p>
         {item.summary && <p className="clamp-3 text-sm leading-relaxed text-muted">{item.summary}</p>}
       </Link>

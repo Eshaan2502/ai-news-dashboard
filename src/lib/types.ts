@@ -29,6 +29,8 @@ export type FeedItemDTO = {
   sourceTopic: string | null;
   siteUrl: string | null;
   isFavorite: boolean;
+  /** Distinct outlets covering this story's cluster — set on trending rows only. */
+  coverage?: number;
 };
 
 /** Everything the in-site reader needs for one article. */

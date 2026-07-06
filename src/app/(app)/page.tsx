@@ -1,4 +1,4 @@
-import { getFeed, type FeedItemDTO } from "@/lib/db/queries";
+import { getFeed, getTrending, type FeedItemDTO } from "@/lib/db/queries";
 import { requireOnboardedUser } from "@/lib/db/user";
 import { SearchSection } from "@/components/SearchSection";
 import { TopicSection } from "@/components/TopicSection";
@@ -7,9 +7,10 @@ import { SetupNotice } from "@/components/SetupNotice";
 export const dynamic = "force-dynamic";
 
 /**
- * The Spectrum front page: a search bar, a Trending strip (highest impact
- * across every topic, last 48h), then one row per chosen topic — in the
- * user's priority order. An active search adds a results row above Trending.
+ * The Spectrum front page: a search bar, a Trending strip (the stories most
+ * outlets are talking about right now — ranked by cluster coverage over the
+ * last 48h), then one row per chosen topic — in the user's priority order.
+ * An active search adds a results row above Trending.
  */
 export default async function HomePage() {
   const user = await requireOnboardedUser();
@@ -19,7 +20,7 @@ export default async function HomePage() {
   let topicRows: FeedItemDTO[][];
   try {
     [trending, ...topicRows] = await Promise.all([
-      getFeed({ userId: user.id, sort: "impact", days: 2, limit: 12 }),
+      getTrending({ userId: user.id, days: 2, limit: 12 }),
       ...topics.map((topic) => getFeed({ userId: user.id, topic, sort: "date", limit: 10 })),
     ]);
   } catch (err) {

@@ -103,6 +103,75 @@ export async function getFeed(p: FeedParams): Promise<FeedItemDTO[]> {
 }
 
 /**
+ * Trending — the most talked-about stories right now. A story trends when
+ * multiple outlets land articles in its dedup cluster during the window,
+ * not merely when the model scored one article highly. Canonical items
+ * whose cluster saw any activity in the window qualify (the canonical row
+ * itself may predate the window while follow-up coverage keeps arriving);
+ * they rank by distinct covering sources, then impact, then recency.
+ */
+export async function getTrending(p: {
+  userId: number;
+  days?: number;
+  limit?: number;
+}): Promise<FeedItemDTO[]> {
+  const cutoff = new Date(Date.now() - (p.days ?? 2) * 86_400_000);
+  // Raw-SQL params skip drizzle's column type mapping, so bind the cutoff as
+  // an ISO string and cast — a bare Date binds in an unparseable format.
+  const cutoffTs = sql`${cutoff.toISOString()}::timestamptz`;
+  // Distinct outlets that fed this story's cluster inside the window.
+  // Rows without a cluster (web-search ingests) count as their own voice.
+  const coverage = sql<number>`greatest(1, (
+    select count(distinct cm.source_id) from ${newsItems} as cm
+    where cm.cluster_id = ${newsItems.clusterId} and cm.fetched_at > ${cutoffTs}
+  ))`;
+  const clusterActive = or(
+    gt(newsItems.fetchedAt, cutoff),
+    sql`exists (
+      select 1 from ${newsItems} as cm
+      where cm.cluster_id = ${newsItems.clusterId} and cm.fetched_at > ${cutoffTs}
+    )`,
+  )!;
+
+  const rows = await feedQuery(p.userId)
+    .where(
+      and(
+        eq(newsItems.isDuplicate, false),
+        clusterActive,
+        // Multi-outlet coverage is importance evidence in its own right, so
+        // it bypasses the impact floor that gates single-article stories.
+        or(gte(newsItems.impactScore, DEFAULT_MIN_IMPACT), sql`${coverage} >= 2`)!,
+      ),
+    )
+    .orderBy(
+      desc(coverage),
+      desc(newsItems.impactScore),
+      desc(sql`coalesce(${newsItems.publishedAt}, ${newsItems.fetchedAt})`),
+    )
+    .limit(p.limit ?? 12);
+
+  const items = rows.map(toFeedItem);
+
+  // Attach each story's coverage so the UI can say why it's trending.
+  const clusterIds = [...new Set(items.map((i) => i.clusterId).filter((c): c is string => !!c))];
+  const counts = clusterIds.length
+    ? await db
+        .select({
+          clusterId: newsItems.clusterId,
+          n: sql<number>`count(distinct ${newsItems.sourceId})::int`,
+        })
+        .from(newsItems)
+        .where(and(inArray(newsItems.clusterId, clusterIds), gt(newsItems.fetchedAt, cutoff)))
+        .groupBy(newsItems.clusterId)
+    : [];
+  const byCluster = new Map(counts.map((c) => [c.clusterId, c.n]));
+  return items.map((i) => ({
+    ...i,
+    coverage: Math.max(1, (i.clusterId && byCluster.get(i.clusterId)) || 1),
+  }));
+}
+
+/**
  * Feed items by explicit id list, returned in the list's order. Used for
  * web-search fallback results, whose relevance order comes from the search
  * engine rather than a SQL sort.

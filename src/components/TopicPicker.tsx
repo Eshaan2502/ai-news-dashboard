@@ -90,6 +90,21 @@ export function TopicPicker({
         })}
       </div>
 
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!selected.length || saving}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-8 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-50"
+        >
+          <Check className="h-4 w-4" />
+          {saving ? "Saving…" : submitLabel}
+        </button>
+        {!selected.length && (
+          <p className="mt-2 text-xs text-muted-foreground">Pick at least one topic to continue.</p>
+        )}
+      </div>
+
       {selected.length > 0 && (
         <div className="mx-auto max-w-md space-y-2">
           <p className="text-center text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -136,21 +151,6 @@ export function TopicPicker({
           </ol>
         </div>
       )}
-
-      <div className="text-center">
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!selected.length || saving}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-8 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-50"
-        >
-          <Check className="h-4 w-4" />
-          {saving ? "Saving…" : submitLabel}
-        </button>
-        {!selected.length && (
-          <p className="mt-2 text-xs text-muted-foreground">Pick at least one topic to continue.</p>
-        )}
-      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/db/user";
 import { MastheadActions } from "./MastheadActions";
+import { MastheadDate } from "./MastheadDate";
 
 /**
  * The Spectrum masthead: a centered serif wordmark over a double rule, with
@@ -18,7 +19,7 @@ export async function Masthead() {
   return (
     <header className="mx-auto w-full max-w-6xl px-4 pt-5">
       <div className="flex items-center justify-between border-b border-border pb-2 text-xs text-muted">
-        <span>{today}</span>
+        <MastheadDate initial={today} />
         <MastheadActions
           userName={user?.name ?? "Guest"}
           userImage={user?.image ?? null}

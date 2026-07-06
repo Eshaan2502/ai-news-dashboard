@@ -39,15 +39,15 @@ async function seed() {
     .where(and(notInArray(sources.url, SOURCES.map((s) => s.url)), ne(sources.type, "web")));
   console.log(`  ✓ ${SOURCES.length} sources`);
 
-  // Source topic is authoritative — align every item with its source's topic.
-  // Web-ingested items keep their AI-derived topic (their source row's topic
-  // is just a placeholder), so web sources are excluded.
+  // Align non-enriched items with their source's topic. Enriched items keep
+  // their model-assigned taxonomy category, and web-ingested items keep their
+  // AI-derived topic (their source row's topic is just a placeholder).
   console.log("→ Backfilling item topics from sources…");
   await db.execute(sql`
     UPDATE news_items ni SET topic = s.topic
     FROM sources s
     WHERE ni.source_id = s.id AND ni.topic IS DISTINCT FROM s.topic
-      AND s.type <> 'web'
+      AND s.type <> 'web' AND ni.enriched = false
   `);
 
   console.log("✓ Seed complete.");

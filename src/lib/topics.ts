@@ -20,6 +20,61 @@ export function isTopic(value: string): value is Topic {
   return (TOPICS as readonly string[]).includes(value);
 }
 
+/**
+ * Labels the enrichment model (and older ingests) commonly use for our
+ * canonical topics. Keys are compared lowercase. Deliberately conservative:
+ * anything not clearly one of the 8 stays unmapped so callers can fall back
+ * (to the source topic, or "General").
+ */
+const TOPIC_ALIASES: Record<string, Topic> = {
+  "artificial intelligence": "AI",
+  "machine learning": "AI",
+  tech: "Technology",
+  gadgets: "Technology",
+  software: "Technology",
+  cybersecurity: "Technology",
+  world: "Politics",
+  "world news": "Politics",
+  "world affairs": "Politics",
+  geopolitics: "Politics",
+  government: "Politics",
+  policy: "Politics",
+  elections: "Politics",
+  election: "Politics",
+  diplomacy: "Politics",
+  "international relations": "Politics",
+  business: "Business & Finance",
+  finance: "Business & Finance",
+  markets: "Business & Finance",
+  economy: "Business & Finance",
+  economics: "Business & Finance",
+  "business and finance": "Business & Finance",
+  space: "Science",
+  environment: "Science",
+  climate: "Science",
+  sport: "Sports",
+  culture: "Entertainment",
+  arts: "Entertainment",
+  film: "Entertainment",
+  movies: "Entertainment",
+  music: "Entertainment",
+  television: "Entertainment",
+  tv: "Entertainment",
+  celebrity: "Entertainment",
+  medicine: "Health",
+  medical: "Health",
+  wellness: "Health",
+  "public health": "Health",
+};
+
+/** Coerce a free-form topic label to a canonical Topic, or null if none fits. */
+export function normalizeTopic(value: string | null | undefined): Topic | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (isTopic(trimmed)) return trimmed;
+  return TOPIC_ALIASES[trimmed.toLowerCase()] ?? null;
+}
+
 /** Warm editorial accent per topic (text color on the cream theme). */
 export const TOPIC_COLOR: Record<Topic, string> = {
   AI: "#9a3b26", // oxblood

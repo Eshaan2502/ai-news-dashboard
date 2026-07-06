@@ -8,6 +8,7 @@ import { Deduper, type IndexItem } from "./dedup";
 import { classifyJunk } from "./heuristics";
 import { computeImpact } from "./score";
 import { AI_ENABLED, embed, enrich, fallbackEnrichment } from "../ai/openai";
+import { normalizeTopic } from "../topics";
 import { mapWithConcurrency, truncate } from "../utils";
 
 export type PerSourceStat = { name: string; status: string; fetched: number; inserted: number };
@@ -86,7 +87,7 @@ export async function runIngestion(): Promise<IngestStats> {
     enriched: boolean;
     summary: string;
     entities: string[];
-    topic: string; // authoritative: inherited from the source
+    topic: string; // model taxonomy category when valid, else inherited from the source
     modelLabel: string; // the model's free-form topic label (kept in tags)
     impact: number;
   };
@@ -182,7 +183,11 @@ export async function runIngestion(): Promise<IngestStats> {
     const result = useAI ? await enrich(input) : fallbackEnrichment(input);
     c.summary = result.summary;
     c.entities = result.entities;
-    c.modelLabel = result.topic; // topic itself stays source-derived
+    c.modelLabel = result.topic;
+    // General-desk feeds (world news, all-content) carry plenty of off-topic
+    // stories, so the model's taxonomy category wins over the source topic
+    // whenever it maps to one of the 8 Spectrum topics.
+    c.topic = normalizeTopic(result.category) ?? c.src.topic;
     c.impact = result.impact;
     c.enriched = useAI;
   });

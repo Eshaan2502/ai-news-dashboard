@@ -2,8 +2,10 @@ import type { Topic } from "../topics";
 
 /**
  * Registered ingestion sources — one entry per RSS/Atom feed, spanning the
- * 8 Spectrum topics. `topic` is authoritative: every item ingested from a
- * source inherits its topic, which decides the homepage row it appears in.
+ * 8 Spectrum topics. `topic` is the source's default: items inherit it unless
+ * AI enrichment files the article under a different taxonomy category (world
+ * and all-content desks carry plenty of off-topic stories). The final item
+ * topic decides the homepage row the story appears in.
  *
  * Feed URLs are public RSS/Atom endpoints. The fetcher is resilient: any
  * source that 404s / rate-limits / changes format is skipped and recorded in

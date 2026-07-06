@@ -105,70 +105,96 @@ export async function getFeed(p: FeedParams): Promise<FeedItemDTO[]> {
 /**
  * Trending — the most talked-about stories right now. A story trends when
  * multiple outlets land articles in its dedup cluster during the window,
- * not merely when the model scored one article highly. Canonical items
- * whose cluster saw any activity in the window qualify (the canonical row
- * itself may predate the window while follow-up coverage keeps arriving);
- * they rank by distinct covering sources, then impact, then recency.
+ * not merely when the model scored one article highly. Each story is shown
+ * through its canonical row while that row is inside the window, and through
+ * its newest article once it isn't — an ongoing story trends under its latest
+ * headline, not the one from when it first broke. Ranking blends outlet
+ * coverage, impact, and how recently the story last moved, and the strip is
+ * soft-capped per topic so one busy news desk can't fill it.
  */
 export async function getTrending(p: {
   userId: number;
   days?: number;
   limit?: number;
 }): Promise<FeedItemDTO[]> {
-  const cutoff = new Date(Date.now() - (p.days ?? 2) * 86_400_000);
+  const limit = p.limit ?? 12;
+  const windowSecs = (p.days ?? 2) * 86_400;
   // Raw-SQL params skip drizzle's column type mapping, so bind the cutoff as
   // an ISO string and cast — a bare Date binds in an unparseable format.
-  const cutoffTs = sql`${cutoff.toISOString()}::timestamptz`;
-  // Distinct outlets that fed this story's cluster inside the window.
-  // Rows without a cluster (web-search ingests) count as their own voice.
-  const coverage = sql<number>`greatest(1, (
-    select count(distinct cm.source_id) from ${newsItems} as cm
-    where cm.cluster_id = ${newsItems.clusterId} and cm.fetched_at > ${cutoffTs}
-  ))`;
-  const clusterActive = or(
-    gt(newsItems.fetchedAt, cutoff),
-    sql`exists (
-      select 1 from ${newsItems} as cm
-      where cm.cluster_id = ${newsItems.clusterId} and cm.fetched_at > ${cutoffTs}
-    )`,
-  )!;
+  const cutoffTs = sql`${new Date(Date.now() - windowSecs * 1000).toISOString()}::timestamptz`;
 
-  const rows = await feedQuery(p.userId)
-    .where(
-      and(
-        eq(newsItems.isDuplicate, false),
-        clusterActive,
-        // Multi-outlet coverage is importance evidence in its own right, so
-        // it bypasses the impact floor that gates single-article stories.
-        or(gte(newsItems.impactScore, DEFAULT_MIN_IMPACT), sql`${coverage} >= 2`)!,
-      ),
+  // One pass over the window: group articles into stories (dedup cluster, or
+  // the row itself when unclustered), score each story, pick its display row.
+  //   coverage  — distinct outlets that fed the cluster inside the window;
+  //               importance evidence in its own right, so ≥2 bypasses the
+  //               impact floor that gates single-article stories.
+  //   freshness — decays linearly from 24 to 0 across the window, so stories
+  //               nothing has landed on in a while sink even when their
+  //               ingest-time impact score was high.
+  const scored = (await db.execute(sql`
+    with members as (
+      select id,
+             coalesce(cluster_id::text, id::text) as story,
+             source_id,
+             impact_score,
+             is_duplicate,
+             coalesce(published_at, fetched_at) as ts
+      from news_items
+      where fetched_at > ${cutoffTs}
+    ),
+    stories as (
+      select story,
+             count(distinct source_id)::int as coverage,
+             max(impact_score) as impact,
+             max(ts) as last_activity
+      from members
+      group by story
+    ),
+    reps as (
+      select distinct on (story) story, id
+      from members
+      order by story, is_duplicate asc, ts desc
     )
-    .orderBy(
-      desc(coverage),
-      desc(newsItems.impactScore),
-      desc(sql`coalesce(${newsItems.publishedAt}, ${newsItems.fetchedAt})`),
-    )
-    .limit(p.limit ?? 12);
+    select r.id,
+           s.coverage,
+           ((s.coverage - 1) * 15
+             + s.impact * 0.6
+             + greatest(0, 24 * (1 - extract(epoch from (now() - s.last_activity)) / ${windowSecs})))::float as score
+    from reps r
+    join stories s using (story)
+    where s.coverage >= 2 or s.impact >= ${DEFAULT_MIN_IMPACT}
+    order by score desc
+    limit ${limit * 3}
+  `)) as unknown as { id: number; coverage: number }[];
+  if (!scored.length) return [];
 
-  const items = rows.map(toFeedItem);
+  const rank = new Map(scored.map((row, i) => [Number(row.id), i]));
+  const coverageById = new Map(scored.map((row) => [Number(row.id), Math.max(1, Number(row.coverage))]));
+  const rows = await feedQuery(p.userId).where(inArray(newsItems.id, [...rank.keys()]));
+  const ranked = rows
+    .map(toFeedItem)
+    .map((i) => ({ ...i, coverage: coverageById.get(i.id) ?? 1 }))
+    .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
 
-  // Attach each story's coverage so the UI can say why it's trending.
-  const clusterIds = [...new Set(items.map((i) => i.clusterId).filter((c): c is string => !!c))];
-  const counts = clusterIds.length
-    ? await db
-        .select({
-          clusterId: newsItems.clusterId,
-          n: sql<number>`count(distinct ${newsItems.sourceId})::int`,
-        })
-        .from(newsItems)
-        .where(and(inArray(newsItems.clusterId, clusterIds), gt(newsItems.fetchedAt, cutoff)))
-        .groupBy(newsItems.clusterId)
-    : [];
-  const byCluster = new Map(counts.map((c) => [c.clusterId, c.n]));
-  return items.map((i) => ({
-    ...i,
-    coverage: Math.max(1, (i.clusterId && byCluster.get(i.clusterId)) || 1),
-  }));
+  // Soft per-topic cap over the score-ordered candidates: during a busy news
+  // cycle one desk's stories all score high together, so uncapped they fill
+  // the whole strip. Spillover backfills when variety runs short.
+  const maxPerTopic = Math.max(2, Math.ceil(limit / 3));
+  const perTopic = new Map<string, number>();
+  const picked: FeedItemDTO[] = [];
+  const spill: FeedItemDTO[] = [];
+  for (const item of ranked) {
+    const topic = item.topic ?? "General";
+    const n = perTopic.get(topic) ?? 0;
+    if (picked.length < limit && n < maxPerTopic) {
+      picked.push(item);
+      perTopic.set(topic, n + 1);
+    } else {
+      spill.push(item);
+    }
+  }
+  picked.push(...spill.slice(0, Math.max(0, limit - picked.length)));
+  return picked.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
 }
 
 /**

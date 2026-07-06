@@ -3,6 +3,7 @@ import { inArray } from "drizzle-orm";
 import { db } from "./db";
 import { newsItems, sources } from "./db/schema";
 import { AI_ENABLED, embed, enrich, fallbackEnrichment } from "./ai/openai";
+import { normalizeTopic } from "./topics";
 import { canonicalizeUrl, mapWithConcurrency, truncate } from "./utils";
 
 /**
@@ -124,7 +125,9 @@ export async function ingestWebResults(hits: WebNewsHit[]): Promise<number[]> {
         publishedAt: hit.publishedAt,
         tags: enrichment.topic && enrichment.topic !== "General" ? [enrichment.topic] : [],
         entities: enrichment.entities,
-        topic: enrichment.topic,
+        // Keep item topics inside the fixed taxonomy — free-form labels like
+        // "Crime" would render as rows/filters the UI doesn't know about.
+        topic: normalizeTopic(enrichment.category) ?? normalizeTopic(enrichment.topic) ?? "General",
         impactScore: enrichment.impact,
         isDuplicate: false,
         embedding,

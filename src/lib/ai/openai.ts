@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { estimateNewsworthiness } from "../ingest/heuristics";
+import { TOPICS } from "../topics";
 import { truncate } from "../utils";
 
 /**
@@ -43,6 +44,8 @@ const EnrichSchema = z.object({
   summary: z.string().default(""),
   entities: z.array(z.string()).default([]),
   topic: z.string().default("General"),
+  /** The model's pick from the fixed Spectrum taxonomy ("" when unclassifiable). */
+  category: z.string().default(""),
   impact: z.number().min(0).max(100).default(50),
 });
 export type Enrichment = z.infer<typeof EnrichSchema>;
@@ -70,6 +73,11 @@ export async function enrich(input: EnrichInput): Promise<Enrichment> {
             '{ "summary": string (1-2 neutral sentences, <=45 words), ' +
             '"entities": string[] (companies, people, places, products; max 6), ' +
             '"topic": string (short label e.g. "Elections", "Markets", "Research", "Transfers"), ' +
+            `"category": string (the section a general-news desk would file this under — exactly one of ${TOPICS.map(
+              (t) => `"${t}"`,
+            ).join(", ")}, or "General" when none fits. ` +
+            '"Politics" means government, elections, policy, or international affairs — not every world-desk story; ' +
+            'AI and machine-learning stories are "AI", not "Technology"), ' +
             '"impact": number (0-100 newsworthiness for a general news reader; calibrate: ' +
             "80-100 major breaking story, 55-79 notable development, 30-54 routine or incremental, " +
             "0-29 promotional/listicle/filler) }.",
@@ -309,6 +317,7 @@ export function fallbackEnrichment(input: EnrichInput): Enrichment {
     summary: fallbackSummary(input),
     entities: [],
     topic: "General",
+    category: "",
     impact: estimateNewsworthiness(input.title, input.content),
   };
 }

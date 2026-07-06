@@ -8,9 +8,10 @@ export const dynamic = "force-dynamic";
 
 /**
  * The Spectrum front page: a search bar, a Trending strip (the stories most
- * outlets are talking about right now — ranked by cluster coverage over the
- * last 48h), then one row per chosen topic — in the user's priority order.
- * An active search adds a results row above Trending.
+ * outlets are talking about right now — a blend of outlet coverage, impact,
+ * and freshness over the last 48h, capped per topic), then one row per chosen
+ * topic — in the user's priority order. An active search adds a results row
+ * above Trending.
  */
 export default async function HomePage() {
   const user = await requireOnboardedUser();

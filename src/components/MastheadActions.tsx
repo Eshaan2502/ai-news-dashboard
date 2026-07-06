@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import Link from "next/link";
-import { Settings, Star, LogOut } from "lucide-react";
+import { ChartPie, Settings, Star, LogOut } from "lucide-react";
 import { signOutAction } from "@/app/welcome/actions";
 
 export function MastheadActions({
@@ -25,6 +25,14 @@ export function MastheadActions({
       >
         <Star className="h-3.5 w-3.5" />
         <span className="hidden sm:inline">Saved</span>
+      </Link>
+      <Link
+        href="/insights"
+        title="Your reading insights"
+        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 transition-colors hover:bg-card-hover hover:text-foreground"
+      >
+        <ChartPie className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Insights</span>
       </Link>
       <Link
         href="/settings"

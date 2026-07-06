@@ -1,12 +1,15 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { ExternalLink, Sparkles } from "lucide-react";
-import { getArticle } from "@/lib/db/queries";
+import { ExternalLink } from "lucide-react";
+import { getArticle, recordRead } from "@/lib/db/queries";
 import { requireOnboardedUser } from "@/lib/db/user";
 import { topicColor } from "@/lib/ui";
 import { ArticleBody, ReaderSkeleton } from "@/components/ArticleBody";
 import { FavoriteButton } from "@/components/FavoriteButton";
+import { ReadingProgress } from "@/components/ReadingProgress";
 import { ShareActions } from "@/components/ShareActions";
+import { SpectrumPanel } from "@/components/SpectrumPanel";
+import { IconAI } from "@/components/TopicIcon";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,6 +28,10 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
   const article = await getArticle(newsItemId, user.id);
   if (!article) notFound();
 
+  // Log the visit — powers the Insights page. recordRead never throws, so a
+  // tracking hiccup can't take down the reader.
+  await recordRead(user.id, article.id);
+
   const published = article.publishedAt
     ? new Date(article.publishedAt).toLocaleDateString("en-US", {
         year: "numeric",
@@ -35,6 +42,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
 
   return (
     <article className="mx-auto max-w-2xl">
+      <ReadingProgress />
       <header>
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
           {article.sourceName ?? "Unknown source"}
@@ -74,21 +82,23 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
       {article.summary && (
         <aside className="mt-6 rounded-lg border border-border bg-card p-4 shadow-sm">
           <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-accent">
-            <Sparkles className="h-3.5 w-3.5" />
+            <IconAI className="h-3.5 w-3.5" />
             AI summary
           </p>
-          <p className="font-serif text-base italic leading-relaxed text-foreground">
+          <p className="font-serif-text text-[1.05rem] italic leading-relaxed text-foreground">
             {article.summary}
           </p>
         </aside>
       )}
+
+      <SpectrumPanel newsItemId={article.id} initial={article.spectrum} />
 
       {article.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element -- images come from arbitrary publisher domains
         <img
           src={article.imageUrl}
           alt=""
-          className="mt-6 w-full rounded-lg border border-border object-cover"
+          className="mt-6 w-full rounded-lg border border-border object-cover shadow-sm"
         />
       )}
 

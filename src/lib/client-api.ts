@@ -1,5 +1,7 @@
 /** Typed fetch helpers for client components. */
 
+import type { SpectrumAnalysis } from "./types";
+
 export async function addFavorite(newsItemId: number) {
   const res = await fetch(`/api/favorites`, {
     method: "POST",
@@ -13,6 +15,13 @@ export async function addFavorite(newsItemId: number) {
 export async function removeFavorite(newsItemId: number) {
   const res = await fetch(`/api/favorites/${newsItemId}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to remove favorite");
+  return res.json();
+}
+
+/** Slow on first call for an article — it may run a live web search + AI pass. */
+export async function fetchSpectrum(newsItemId: number): Promise<SpectrumAnalysis> {
+  const res = await fetch(`/api/spectrum/${newsItemId}`);
+  if (!res.ok) throw new Error("Failed to load the spectrum");
   return res.json();
 }
 

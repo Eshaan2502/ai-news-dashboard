@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gt, gte, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "./index";
-import { newsItems, sources, favorites } from "./schema";
+import { newsItems, sources, favorites, reads } from "./schema";
 import type { SortOption } from "../constants";
-import type { ArticleDTO, FeedItemDTO } from "../types";
+import type { ArticleDTO, FeedItemDTO, InsightsDTO } from "../types";
 import { AI_ENABLED, embed } from "../ai/openai";
 import { decodeEntities } from "../utils";
 
@@ -93,7 +93,30 @@ export async function getFeed(p: FeedParams): Promise<FeedItemDTO[]> {
         ? [asc(sources.name), desc(newsItems.publishedAt)]
         : [desc(sql`coalesce(${newsItems.publishedAt}, ${newsItems.fetchedAt})`)]);
 
-  let qb = db
+  const rows = await feedQuery(p.userId, p.favoritesOnly)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(...orderBy)
+    .limit(p.limit ?? 60)
+    .offset(p.offset ?? 0);
+
+  return rows.map(toFeedItem);
+}
+
+/**
+ * Feed items by explicit id list, returned in the list's order. Used for
+ * web-search fallback results, whose relevance order comes from the search
+ * engine rather than a SQL sort.
+ */
+export async function getFeedByIds(ids: number[], userId: number): Promise<FeedItemDTO[]> {
+  if (!ids.length) return [];
+  const rows = await feedQuery(userId).where(inArray(newsItems.id, ids));
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  return rows.map(toFeedItem).sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+}
+
+/** Shared select + joins behind every feed-shaped query. */
+function feedQuery(userId: number, favoritesOnly = false) {
+  const qb = db
     .select({
       id: newsItems.id,
       title: newsItems.title,
@@ -119,16 +142,14 @@ export async function getFeed(p: FeedParams): Promise<FeedItemDTO[]> {
     .leftJoin(sources, eq(newsItems.sourceId, sources.id))
     .$dynamic();
 
-  const favJoin = and(eq(favorites.newsItemId, newsItems.id), eq(favorites.userId, p.userId));
-  qb = p.favoritesOnly ? qb.innerJoin(favorites, favJoin) : qb.leftJoin(favorites, favJoin);
+  const favJoin = and(eq(favorites.newsItemId, newsItems.id), eq(favorites.userId, userId));
+  return favoritesOnly ? qb.innerJoin(favorites, favJoin) : qb.leftJoin(favorites, favJoin);
+}
 
-  const rows = await qb
-    .where(conds.length ? and(...conds) : undefined)
-    .orderBy(...orderBy)
-    .limit(p.limit ?? 60)
-    .offset(p.offset ?? 0);
+type FeedRow = Awaited<ReturnType<ReturnType<typeof feedQuery>["execute"]>>[number];
 
-  return rows.map((r) => ({
+function toFeedItem(r: FeedRow): FeedItemDTO {
+  return {
     ...r,
     // Rows ingested before entity decoding may hold raw &#8217;-style entities.
     title: decodeEntities(r.title),
@@ -137,7 +158,123 @@ export async function getFeed(p: FeedParams): Promise<FeedItemDTO[]> {
     tags: (r.tags as string[]) ?? [],
     publishedAt: r.publishedAt ? new Date(r.publishedAt).toISOString() : null,
     fetchedAt: new Date(r.fetchedAt).toISOString(),
-  }));
+  };
+}
+
+/* ---------- Reading history & insights ---------- */
+
+/**
+ * Record that a user opened a story. The first open inserts a row; re-opens
+ * bump `readCount`/`lastReadAt`. Errors are swallowed on purpose — tracking
+ * must never break the reader.
+ */
+export async function recordRead(userId: number, newsItemId: number): Promise<void> {
+  try {
+    await db
+      .insert(reads)
+      .values({ userId, newsItemId })
+      .onConflictDoUpdate({
+        target: [reads.userId, reads.newsItemId],
+        set: {
+          readCount: sql`${reads.readCount} + 1`,
+          lastReadAt: sql`now()`,
+        },
+      });
+  } catch (err) {
+    console.warn(`[reads] failed to record read of item ${newsItemId}:`, err);
+  }
+}
+
+/** Days of history shown in the Insights activity chart. */
+const INSIGHTS_DAYS = 14;
+
+/** Aggregate one user's reading history for the Insights page. */
+export async function getReadingInsights(userId: number): Promise<InsightsDTO> {
+  const mine = eq(reads.userId, userId);
+  const count = sql<number>`count(*)::int`;
+  const topicExpr = sql<string>`coalesce(${newsItems.topic}, 'General')`;
+  const categoryExpr = sql<string>`coalesce(${sources.category}, 'Other')`;
+  const dayExpr = sql<string>`to_char(${reads.createdAt} at time zone 'utc', 'YYYY-MM-DD')`;
+
+  const [totals, topics, categories, topSources, daily, recent] = await Promise.all([
+    db
+      .select({
+        storiesRead: count,
+        totalOpens: sql<number>`coalesce(sum(${reads.readCount}), 0)::int`,
+        readsThisWeek: sql<number>`(count(*) filter (where ${reads.createdAt} > now() - interval '7 days'))::int`,
+        firstReadAt: sql<Date | null>`min(${reads.createdAt})`,
+      })
+      .from(reads)
+      .where(mine),
+    db
+      .select({ topic: topicExpr, count })
+      .from(reads)
+      .innerJoin(newsItems, eq(reads.newsItemId, newsItems.id))
+      .where(mine)
+      .groupBy(topicExpr)
+      .orderBy(desc(count)),
+    db
+      .select({ category: categoryExpr, count })
+      .from(reads)
+      .innerJoin(newsItems, eq(reads.newsItemId, newsItems.id))
+      .leftJoin(sources, eq(newsItems.sourceId, sources.id))
+      .where(mine)
+      .groupBy(categoryExpr)
+      .orderBy(desc(count)),
+    db
+      .select({ source: sources.name, count })
+      .from(reads)
+      .innerJoin(newsItems, eq(reads.newsItemId, newsItems.id))
+      .innerJoin(sources, eq(newsItems.sourceId, sources.id))
+      .where(mine)
+      .groupBy(sources.name)
+      .orderBy(desc(count))
+      .limit(6),
+    db
+      .select({ day: dayExpr, count })
+      .from(reads)
+      .where(and(mine, gt(reads.createdAt, new Date(Date.now() - INSIGHTS_DAYS * 86_400_000))))
+      .groupBy(dayExpr),
+    db
+      .select({
+        id: newsItems.id,
+        title: newsItems.title,
+        topic: newsItems.topic,
+        sourceName: sources.name,
+        lastReadAt: reads.lastReadAt,
+      })
+      .from(reads)
+      .innerJoin(newsItems, eq(reads.newsItemId, newsItems.id))
+      .leftJoin(sources, eq(newsItems.sourceId, sources.id))
+      .where(mine)
+      .orderBy(desc(reads.lastReadAt))
+      .limit(6),
+  ]);
+
+  // Zero-fill the activity window so the chart shows quiet days too.
+  const byDay = new Map(daily.map((d) => [d.day, d.count]));
+  const days: { day: string; count: number }[] = [];
+  for (let i = INSIGHTS_DAYS - 1; i >= 0; i--) {
+    const day = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+    days.push({ day, count: byDay.get(day) ?? 0 });
+  }
+
+  const t = totals[0];
+  return {
+    storiesRead: t?.storiesRead ?? 0,
+    totalOpens: t?.totalOpens ?? 0,
+    readsThisWeek: t?.readsThisWeek ?? 0,
+    firstReadAt: t?.firstReadAt ? new Date(t.firstReadAt).toISOString() : null,
+    topics,
+    categories,
+    sources: topSources,
+    daily: days,
+    recent: recent.map((r) => ({
+      ...r,
+      title: decodeEntities(r.title),
+      lastReadAt: new Date(r.lastReadAt).toISOString(),
+    })),
+  };
 }
 
 /** Single article for the in-site reader (includes extraction cache fields). */
@@ -167,6 +304,8 @@ export async function getArticle(id: number, userId: number): Promise<ArticleDTO
       extractedContent: newsItems.extractedContent,
       extractionStatus: newsItems.extractionStatus,
       extractedAt: newsItems.extractedAt,
+      spectrum: newsItems.spectrum,
+      spectrumAt: newsItems.spectrumAt,
     })
     .from(newsItems)
     .leftJoin(sources, eq(newsItems.sourceId, sources.id))
@@ -187,5 +326,6 @@ export async function getArticle(id: number, userId: number): Promise<ArticleDTO
     publishedAt: r.publishedAt ? new Date(r.publishedAt).toISOString() : null,
     fetchedAt: new Date(r.fetchedAt).toISOString(),
     extractedAt: r.extractedAt ? new Date(r.extractedAt).toISOString() : null,
+    spectrumAt: r.spectrumAt ? new Date(r.spectrumAt).toISOString() : null,
   };
 }

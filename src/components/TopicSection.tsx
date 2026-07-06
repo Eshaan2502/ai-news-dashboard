@@ -1,8 +1,8 @@
-import { Flame } from "lucide-react";
 import type { FeedItemDTO } from "@/lib/types";
 import { topicColor } from "@/lib/ui";
 import { HorizontalRow } from "./HorizontalRow";
 import { NewsCard } from "./NewsCard";
+import { TopicIcon } from "./TopicIcon";
 
 /**
  * One homepage row: a serif heading over a rule, then a horizontally
@@ -21,16 +21,14 @@ export function TopicSection({
     <section className="animate-fade-in">
       <div className="mb-3 flex items-baseline gap-3 border-b border-border pb-2">
         <h2 className="flex items-center gap-2 font-serif text-2xl font-bold text-foreground">
-          {trending && <Flame className="h-5 w-5 text-primary" />}
+          <TopicIcon
+            title={title}
+            trending={trending}
+            className="h-5 w-5"
+            style={{ color: trending ? "var(--color-primary)" : topicColor(title) }}
+          />
           <span style={trending ? { color: "var(--color-primary)" } : undefined}>{title}</span>
         </h2>
-        {!trending && (
-          <span
-            className="inline-block h-2 w-2 rounded-full"
-            style={{ backgroundColor: topicColor(title) }}
-            aria-hidden
-          />
-        )}
         <span className="ml-auto text-xs text-muted-foreground">
           {items.length ? `${items.length} stories` : ""}
         </span>

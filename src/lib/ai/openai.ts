@@ -172,6 +172,119 @@ export async function generateLinkedInPost(input: LinkedInPostInput): Promise<Li
   }
 }
 
+/* ─────────────────────────── Full Spectrum ─────────────────────────── */
+
+export type SpectrumCoverageItem = {
+  id: number;
+  sourceName: string;
+  title: string;
+  summary: string | null;
+};
+
+export type SpectrumAnalyzeInput = {
+  original: { title: string; summary: string | null; sourceName: string };
+  coverage: SpectrumCoverageItem[];
+};
+
+export type SpectrumAnalyzeResult = {
+  overview: string | null;
+  divergence: string | null;
+  /** Only coverage the model judged to be about the same story survives. */
+  perspectives: Array<{ id: number; label: string; angle: string }>;
+  aiGenerated: boolean;
+};
+
+const SpectrumSchema = z.object({
+  overview: z.string().default(""),
+  divergence: z.string().default(""),
+  perspectives: z
+    .array(
+      z.object({
+        id: z.number(),
+        label: z.string().default(""),
+        angle: z.string().default(""),
+      }),
+    )
+    .default([]),
+});
+
+/**
+ * Characterize how each outlet frames the same story: a short lens label plus
+ * a one-line angle per article, and an agree/diverge summary across all of
+ * them. The model also acts as the relevance filter — candidate coverage it
+ * judges to be about a different story is simply not returned.
+ * Fallback: every candidate kept, unlabeled, with its own summary as the angle.
+ */
+export async function analyzeSpectrum(input: SpectrumAnalyzeInput): Promise<SpectrumAnalyzeResult> {
+  const c = client();
+  if (!c || input.coverage.length === 0) return fallbackSpectrum(input);
+
+  const coverageList = input.coverage
+    .map(
+      (item) =>
+        `id ${item.id} — ${item.sourceName}: "${item.title}"` +
+        (item.summary ? `\n  ${truncate(item.summary, 300)}` : ""),
+    )
+    .join("\n");
+
+  try {
+    const res = await c.chat.completions.create({
+      model: MODEL,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a media-literacy editor comparing how different outlets cover the same news story. " +
+            "Given an original article and candidate coverage, respond ONLY with JSON: " +
+            '{ "overview": string (1-2 sentences: what the coverage broadly agrees on), ' +
+            '"divergence": string (1 sentence: the sharpest difference in emphasis, framing, or conclusions across outlets; "" if none), ' +
+            '"perspectives": [{ "id": number (copy from the candidate list), ' +
+            '"label": string (2-5 word lens this piece views the story through, e.g. "Local livelihoods", "Government response", "Industry pushback"), ' +
+            '"angle": string (<=28 words: what this outlet emphasizes or how its framing differs from the original) }] }. ' +
+            "Include ONLY candidates genuinely covering the same story or event — silently drop unrelated ones. " +
+            "Give different pieces distinct labels where honestly possible; never invent facts beyond the provided text.",
+        },
+        {
+          role: "user",
+          content:
+            `Original article (${input.original.sourceName}): "${input.original.title}"\n` +
+            `${input.original.summary ?? ""}\n\nCandidate coverage:\n${coverageList}`,
+        },
+      ],
+    });
+    const raw = res.choices[0]?.message?.content ?? "{}";
+    const parsed = SpectrumSchema.parse(JSON.parse(raw));
+    const known = new Set(input.coverage.map((item) => item.id));
+    return {
+      overview: parsed.overview.trim() || null,
+      divergence: parsed.divergence.trim() || null,
+      perspectives: parsed.perspectives.filter((p) => known.has(p.id)),
+      aiGenerated: true,
+    };
+  } catch (e) {
+    console.warn("analyzeSpectrum() failed, using fallback:", e instanceof Error ? e.message : e);
+    return fallbackSpectrum(input);
+  }
+}
+
+/** No-AI spectrum: list the coverage as-is so the feature still works keyless. */
+function fallbackSpectrum(input: SpectrumAnalyzeInput): SpectrumAnalyzeResult {
+  return {
+    overview: input.coverage.length
+      ? `${input.coverage.length} other outlet${input.coverage.length === 1 ? " is" : "s are"} covering this story.`
+      : null,
+    divergence: null,
+    perspectives: input.coverage.map((item) => ({
+      id: item.id,
+      label: "",
+      angle: item.summary ? truncate(item.summary, 180) : "",
+    })),
+    aiGenerated: false,
+  };
+}
+
 function fallbackLinkedInPost(input: LinkedInPostInput): string {
   const topicTag = (input.topic ?? "News").replace(/[^\p{L}\p{N}]/gu, "");
   const parts = [

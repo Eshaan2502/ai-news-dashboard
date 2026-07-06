@@ -19,7 +19,17 @@ function toSegments(blocks: ArticleBlock[]): Segment[] {
 
 // Newspaper drop cap on the opening paragraph, sized off the body text.
 const DROP_CAP =
-  "first-letter:float-left first-letter:mr-2 first-letter:font-serif first-letter:text-[3.1em] first-letter:font-black first-letter:leading-[0.85] first-letter:text-primary";
+  "first-letter:float-left first-letter:mr-2.5 first-letter:mt-1 first-letter:font-serif first-letter:text-[3.4em] first-letter:font-black first-letter:leading-[0.78] first-letter:text-primary";
+
+/**
+ * Wire-service dateline opening the first paragraph — "SAN FRANCISCO
+ * (Reuters) — …". Typeset as a kicker rather than drop-capping its first
+ * letter, which would split the place name.
+ */
+const DATELINE = /^([A-Z][A-Z0-9.,'’ -]{1,28}[A-Z.])(\s*\([A-Za-z .]{2,24}\))?\s*[—–:-]\s+(?=\S)/;
+
+/** Words-per-minute for the reading-time estimate shown above the body. */
+const READING_WPM = 225;
 
 /**
  * Async server component: streams in the full article text (extracting on
@@ -32,56 +42,87 @@ export async function ArticleBody({ article }: { article: ArticleDTO }) {
 
   if (blocks.length) {
     const segments = toSegments(blocks);
+    const words = blocks.reduce((n, b) => n + b.text.split(/\s+/).length, 0);
+    const minutes = Math.max(1, Math.round(words / READING_WPM));
     return (
-      <div className="space-y-5 break-words text-[1.0625rem] leading-[1.75] text-foreground">
-        {segments.map((segment, i) => {
-          if (segment.kind === "list") {
-            return (
-              <ul key={i} className="space-y-2.5">
-                {segment.items.map((item, j) => (
-                  <li key={j} className="flex gap-2.5 pl-1">
-                    <span aria-hidden className="select-none text-primary">
-                      •
-                    </span>
-                    <span className="text-pretty">{item}</span>
-                  </li>
-                ))}
-              </ul>
-            );
-          }
-          const { block } = segment;
-          switch (block.type) {
-            case "h2":
+      <div>
+        <p className="mb-6 flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+          {minutes} min read
+          <span aria-hidden className="h-px flex-1 bg-border" />
+        </p>
+        <div className="space-y-5 break-words font-serif-text text-[1.125rem] leading-[1.8] text-foreground">
+          {segments.map((segment, i) => {
+            if (segment.kind === "list") {
               return (
-                <h2 key={i} className="pt-4 font-serif text-2xl font-bold leading-snug text-balance">
-                  {block.text}
-                </h2>
-              );
-            case "h3":
-              return (
-                <h3 key={i} className="pt-3 font-serif text-xl font-bold leading-snug text-balance">
-                  {block.text}
-                </h3>
-              );
-            case "blockquote":
-              return (
-                <blockquote
-                  key={i}
-                  className="border-l-2 border-primary pl-4 font-serif text-lg italic leading-relaxed text-muted"
-                >
-                  {block.text}
-                </blockquote>
-              );
-            default: {
-              const dropCap = i === 0 && /^[A-Za-z]/.test(block.text);
-              return (
-                <p key={i} className={dropCap ? `text-pretty ${DROP_CAP}` : "text-pretty"}>
-                  {block.text}
-                </p>
+                <ul key={i} className="space-y-2.5 pl-1">
+                  {segment.items.map((item, j) => (
+                    <li key={j} className="flex gap-3">
+                      <span
+                        aria-hidden
+                        className="mt-[0.65em] h-1.5 w-1.5 shrink-0 rounded-full bg-primary/80"
+                      />
+                      <span className="text-pretty">{item}</span>
+                    </li>
+                  ))}
+                </ul>
               );
             }
-          }
-        })}
+            const { block } = segment;
+            switch (block.type) {
+              case "h2":
+                return (
+                  <h2
+                    key={i}
+                    className="pt-6 font-serif text-2xl font-bold leading-snug text-balance before:mb-4 before:block before:h-[3px] before:w-12 before:bg-accent/80 before:content-['']"
+                  >
+                    {block.text}
+                  </h2>
+                );
+              case "h3":
+                return (
+                  <h3 key={i} className="pt-4 font-serif text-xl font-bold leading-snug text-balance">
+                    {block.text}
+                  </h3>
+                );
+              case "blockquote":
+                return (
+                  <blockquote
+                    key={i}
+                    className="border-l-2 border-accent py-0.5 pl-5 font-serif text-[1.25rem] italic leading-relaxed text-foreground/85"
+                  >
+                    {block.text}
+                  </blockquote>
+                );
+              default: {
+                const dateline = i === 0 ? block.text.match(DATELINE) : null;
+                if (dateline && dateline[1].split(/\s+/).length <= 4) {
+                  return (
+                    <p key={i} className="text-pretty">
+                      <span className="mr-1 font-sans text-[0.72em] font-bold tracking-[0.08em] text-primary">
+                        {dateline[1]}
+                        {dateline[2] ? ` ${dateline[2].trim()}` : ""}
+                      </span>
+                      <span className="text-muted">— </span>
+                      {block.text.slice(dateline[0].length)}
+                    </p>
+                  );
+                }
+                const dropCap = i === 0 && /^[A-Za-z]/.test(block.text);
+                return (
+                  <p key={i} className={dropCap ? `text-pretty ${DROP_CAP}` : "text-pretty"}>
+                    {block.text}
+                  </p>
+                );
+              }
+            }
+          })}
+          {/* Classic end-of-article tombstone */}
+          <div aria-hidden className="flex items-center justify-center gap-3 pt-4">
+            <span className="h-px w-10 bg-border-strong" />
+            <span className="text-[0.55rem] leading-none text-primary">■</span>
+            <span className="h-px w-10 bg-border-strong" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -119,7 +160,10 @@ export async function ArticleBody({ article }: { article: ArticleDTO }) {
             .split(/\n{2,}/)
             .filter((para) => para.trim())
             .map((para, i) => (
-              <p key={i} className="text-pretty break-words text-[1.0625rem] leading-[1.75] text-foreground">
+              <p
+                key={i}
+                className="text-pretty break-words font-serif-text text-[1.125rem] leading-[1.8] text-foreground"
+              >
                 {para.trim()}
               </p>
             ))}

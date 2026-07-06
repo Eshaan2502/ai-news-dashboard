@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Globe, Loader2, Search, X } from "lucide-react";
-import type { FeedItemDTO, WebResultDTO } from "@/lib/types";
-import { timeAgo } from "@/lib/utils";
+import type { FeedItemDTO } from "@/lib/types";
 import { HorizontalRow } from "./HorizontalRow";
 import { NewsCard } from "./NewsCard";
 
@@ -11,13 +10,14 @@ import { NewsCard } from "./NewsCard";
  * Front-page search: a bar above the fold, and — while a query is active —
  * a results row styled like any topic row rendered right below it, pushing
  * Trending and the topic rows down. Clearing the query removes the row.
- * When the corpus has no matches the API falls back to a live web search;
- * those hits render as link-out cards clearly labeled as from the web.
+ * When the corpus has no matches the API searches the web live and ingests
+ * the hits, so they render as regular cards with the full article workflow —
+ * only a globe note marks that they were just pulled in.
  */
 export function SearchSection() {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<FeedItemDTO[]>([]);
-  const [webItems, setWebItems] = useState<WebResultDTO[]>([]);
+  const [webSearched, setWebSearched] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
 
   const q = query.trim();
@@ -28,7 +28,7 @@ export function SearchSection() {
     const next = value.trim();
     if (!next) {
       setItems([]);
-      setWebItems([]);
+      setWebSearched(false);
       setStatus("idle");
     } else if (next !== q) {
       setStatus("loading");
@@ -44,9 +44,9 @@ export function SearchSection() {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`Search failed (${res.status})`);
-        const data = (await res.json()) as { items: FeedItemDTO[]; webItems?: WebResultDTO[] };
+        const data = (await res.json()) as { items: FeedItemDTO[]; webSearched?: boolean };
         setItems(data.items);
-        setWebItems(data.webItems ?? []);
+        setWebSearched(Boolean(data.webSearched));
         setStatus("done");
       } catch {
         if (!controller.signal.aborted) setStatus("error");
@@ -93,20 +93,26 @@ export function SearchSection() {
               {status === "loading" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Searching" />
               ) : status === "done" && items.length ? (
-                `${items.length} ${items.length === 1 ? "story" : "stories"}`
-              ) : status === "done" && webItems.length ? (
-                `${webItems.length} from the web`
+                `${items.length} ${items.length === 1 ? "story" : "stories"}${webSearched ? " from the web" : ""}`
               ) : (
                 ""
               )}
             </span>
           </div>
           {items.length ? (
-            <HorizontalRow>
-              {items.map((item) => (
-                <NewsCard key={item.id} item={item} />
-              ))}
-            </HorizontalRow>
+            <div className="space-y-3">
+              {webSearched && (
+                <p className="flex items-center gap-1.5 text-sm italic text-muted">
+                  <Globe className="h-3.5 w-3.5" />
+                  Nothing in your feeds yet — pulled these in fresh from the web:
+                </p>
+              )}
+              <HorizontalRow>
+                {items.map((item) => (
+                  <NewsCard key={item.id} item={item} />
+                ))}
+              </HorizontalRow>
+            </div>
           ) : status === "loading" ? (
             <p className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/50 px-4 py-8 text-sm text-muted">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -116,57 +122,14 @@ export function SearchSection() {
             <p className="rounded-lg border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted">
               Something went wrong while searching — try again.
             </p>
-          ) : webItems.length ? (
-            <div className="space-y-3">
-              <p className="flex items-center gap-1.5 text-sm italic text-muted">
-                <Globe className="h-3.5 w-3.5" />
-                Nothing in your feeds yet — here&rsquo;s what the wider web has:
-              </p>
-              <HorizontalRow>
-                {webItems.map((item) => (
-                  <WebResultCard key={item.url} item={item} />
-                ))}
-              </HorizontalRow>
-            </div>
           ) : (
             <p className="rounded-lg border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted">
-              No stories match &ldquo;{q}&rdquo; — in your feeds or on the web. Try a different
-              keyword.
+              No stories match &ldquo;{q}&rdquo;{webSearched ? " — in your feeds or on the web" : ""}.
+              Try a different keyword.
             </p>
           )}
         </section>
       )}
     </div>
-  );
-}
-
-/**
- * A web-fallback hit. Unlike NewsCard there is no reader page or favorite —
- * the article was never ingested — so the card links out to the publisher.
- * The dashed border and globe badge mark it as external at a glance.
- */
-function WebResultCard({ item }: { item: WebResultDTO }) {
-  return (
-    <article className="group h-full animate-fade-in">
-      <a
-        href={item.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex h-full flex-col gap-2 rounded-lg border border-dashed border-border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-strong hover:bg-card-hover hover:shadow-md"
-      >
-        <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
-          <Globe className="h-3 w-3 shrink-0" />
-          <span className="truncate">{item.sourceName}</span>
-        </p>
-        <h3 className="clamp-2 font-serif text-lg font-bold leading-snug text-foreground group-hover:text-primary">
-          {item.title}
-        </h3>
-        {item.publishedAt && (
-          <p className="text-xs text-muted-foreground">
-            <time dateTime={item.publishedAt}>{timeAgo(item.publishedAt)}</time>
-          </p>
-        )}
-      </a>
-    </article>
   );
 }

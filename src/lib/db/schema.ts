@@ -13,7 +13,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import type { ArticleBlock } from "../types";
+import type { ArticleBlock, SpectrumAnalysis } from "../types";
 
 /**
  * sources — registered news feeds (RSS/API).
@@ -70,6 +70,9 @@ export const newsItems = pgTable(
     extractedContent: jsonb("extracted_content").$type<ArticleBlock[]>(),
     extractedAt: timestamp("extracted_at", { withTimezone: true }),
     extractionStatus: text("extraction_status"), // ok | failed
+    // Full Spectrum cache: multi-outlet perspective analysis, built on demand.
+    spectrum: jsonb("spectrum").$type<SpectrumAnalysis>(),
+    spectrumAt: timestamp("spectrum_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("news_canonical_idx").on(t.canonicalUrl),
@@ -119,6 +122,31 @@ export const favorites = pgTable(
   (t) => [uniqueIndex("favorites_user_item_idx").on(t.userId, t.newsItemId)],
 );
 
+/**
+ * reads — a user's reading history (one row per user+item). The first open
+ * inserts the row; re-opens bump `readCount` and `lastReadAt`. Powers the
+ * Insights page (topic/source leanings, activity over time).
+ */
+export const reads = pgTable(
+  "reads",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    newsItemId: integer("news_item_id")
+      .references(() => newsItems.id, { onDelete: "cascade" })
+      .notNull(),
+    readCount: integer("read_count").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("reads_user_item_idx").on(t.userId, t.newsItemId),
+    index("reads_user_idx").on(t.userId),
+  ],
+);
+
 /* ---------- relations (for typed joins via db.query) ---------- */
 
 export const sourcesRelations = relations(sources, ({ many }) => ({
@@ -128,11 +156,17 @@ export const sourcesRelations = relations(sources, ({ many }) => ({
 export const newsItemsRelations = relations(newsItems, ({ one, many }) => ({
   source: one(sources, { fields: [newsItems.sourceId], references: [sources.id] }),
   favorites: many(favorites),
+  reads: many(reads),
 }));
 
 export const favoritesRelations = relations(favorites, ({ one }) => ({
   user: one(users, { fields: [favorites.userId], references: [users.id] }),
   newsItem: one(newsItems, { fields: [favorites.newsItemId], references: [newsItems.id] }),
+}));
+
+export const readsRelations = relations(reads, ({ one }) => ({
+  user: one(users, { fields: [reads.userId], references: [users.id] }),
+  newsItem: one(newsItems, { fields: [reads.newsItemId], references: [newsItems.id] }),
 }));
 
 /* ---------- inferred types ---------- */
@@ -143,3 +177,4 @@ export type NewsItem = typeof newsItems.$inferSelect;
 export type NewNewsItem = typeof newsItems.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type Favorite = typeof favorites.$inferSelect;
+export type Read = typeof reads.$inferSelect;

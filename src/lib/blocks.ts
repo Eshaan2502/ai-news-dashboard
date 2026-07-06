@@ -7,18 +7,74 @@ import type { ArticleBlock } from "./types";
  * only shape the reader renders. Shared by read-time extraction (extract.ts)
  * and ingest-time feed full-text (ingest/normalize.ts). No db imports here so
  * the ingest pipeline can use it without pulling in the reader stack.
+ *
+ * ── How a piece of extracted text is classified ──────────────────────────
+ * Every candidate line runs through the same decision ladder:
+ *
+ *  1. DROP if it isn't article prose (see isNoise below):
+ *     site chrome, cross-promo links, image captions/credits, bylines and
+ *     timestamps that leaked out of the header, newsletter CTAs, copyright
+ *     footers, syndication credits. Length guards keep these filters from
+ *     ever touching a real paragraph.
+ *  2. PROMOTE things that are headings in disguise:
+ *     <p><strong>…</strong></p> (WordPress section heads), h4–h6, and short
+ *     title-cased lines without sentence punctuation → h3.
+ *  3. SPLIT wall-of-text paragraphs (feeds that collapse the whole article
+ *     into one <p>) at sentence boundaries into readable chunks.
+ *  4. Everything else keeps its semantic type: p, h2, h3, li, blockquote —
+ *     which is exactly the set the reader knows how to typeset.
  */
 
 const MAX_BLOCKS = 250;
 
-// Site chrome that Readability sometimes lets through (nav links, ad slots).
+/**
+ * Short-line filters only apply below this length — a genuine paragraph is
+ * longer than any caption/byline/CTA, so real prose can never be dropped.
+ */
+const NOISE_MAX_LEN = 160;
+
+// Site chrome and cross-promo lines that Readability sometimes lets through
+// (nav links, ad slots, "Read more:"/"Related:" link rows, app banners).
 const BOILERPLATE =
-  /^(skip to (main )?content|skip to navigation|advertisement|sponsored( content)?|sign (in|up)|subscribe (now|today)|share this|follow us)\b/i;
+  /^(skip to (main )?content|skip to navigation|advertisement$|sponsored( content)?|sign (in|up)\b|subscribe (now|today)\b|share (this|on)\b|follow us\b|listen to this (article|story)|(this )?story continues below|scroll to continue|continue reading|click here\b|download (the |our )?app\b|open in app$|(read|see) (more|also|next)\s*[:|–—-]|also read\s*[:|–—-]|related\s*[:|]|related (articles|stories|news|videos?)\b|recommended for you|trending (now|topics)|watch\s*[:|]|watch now\b|comments?$)/i;
+
+// Orphaned image captions and photo credits — the reader strips images, so
+// these lines describe pictures the user can't see (TechCrunch's
+// "Image Credits: …", wire-photo "(Photo: Reuters)" tails, etc.).
+const CREDIT_LINE =
+  /^(photo|image|picture|video|file photo|representational image|illustration|graphic|screenshot|screengrab|video grab)s?\s*(credits?\s*)?[:|]|^(credits?|courtesy)\s*[:|]|^(photo|image)s? (by|courtesy of)\b/i;
+const TRAILING_CREDIT =
+  /[([](photo|image|file|source|credits?|via|reuters|afp|ap photo|getty( images)?|bloomberg|shutterstock|istock|unsplash|pixabay)[^)\]]{0,60}[)\]]\.?$/i;
+
+// Bylines, timestamps and reading-time chips that escape the page header.
+const META_LINE =
+  /^(by [A-Z][\w.'’-]+( [A-Z][\w.'’-]+){0,3}$|(published|updated|last updated|first published|posted|edited by|written by|reported by|curated by)\b[^.]{0,80}$|\d+ min(ute)?s? read$|reading time\s*[:\s])/i;
+
+// Legal footers.
+const COPYRIGHT = /^(©|copyright\s+©?\s*\d{4}|all rights reserved)/i;
+
+// Newsletter/subscription CTAs mid-article (VentureBeat, TechCrunch, …).
+const NEWSLETTER_CTA =
+  /(sign up|subscribe|register) (for|to) (our |the )?(daily |weekly |free )?(newsletter|briefing|digest)/i;
 
 // Syndication credit footers (WordPress republish plugins) — the page footer
 // already credits the publisher with a link, so these are pure noise.
 const SYNDICATION =
   /^(the post .{0,200}appeared first on|this (article|story|post) (first appeared|originally appeared|was (first|originally) published))\b/i;
+
+/** True when a cleaned line is site furniture rather than article prose. */
+function isNoise(text: string): boolean {
+  if (SYNDICATION.test(text)) return true;
+  if (text.length >= NOISE_MAX_LEN) return false;
+  return (
+    BOILERPLATE.test(text) ||
+    CREDIT_LINE.test(text) ||
+    TRAILING_CREDIT.test(text) ||
+    META_LINE.test(text) ||
+    COPYRIGHT.test(text) ||
+    NEWSLETTER_CTA.test(text)
+  );
+}
 
 /**
  * Some feeds double-escape their markup, so entity decoding leaves literal
@@ -41,8 +97,7 @@ function pushBlock(
   const text = cleanText(rawText);
   const minLen = type === "h2" || type === "h3" ? 3 : 25;
   if (text.length < minLen || seen.has(text) || blocks.length >= MAX_BLOCKS) return;
-  if (text.length < 120 && BOILERPLATE.test(text)) return;
-  if (SYNDICATION.test(text)) return;
+  if (isNoise(text)) return;
   seen.add(text);
   blocks.push({ type, text });
 }
@@ -133,11 +188,41 @@ function looksLikeHeading(text: string): boolean {
 }
 
 /**
+ * Feeds sometimes collapse an entire article into one wall-of-text paragraph.
+ * Past this length, split at sentence boundaries into readable chunks.
+ */
+const LONG_PARAGRAPH = 700;
+const TARGET_CHUNK = 450;
+
+// Sentence boundary: terminal punctuation (plus closing quotes/parens),
+// not after a title/abbreviation or a single-initial ("Dr.", "U.S."),
+// followed by whitespace and something that starts a sentence.
+const SENTENCE_BREAK =
+  /(?<=[.!?…]["'”’)]*)(?<!\b(?:Mr|Mrs|Ms|Dr|Prof|St|Sen|Rep|Gov|Gen|Jr|Sr|vs|etc|Inc|Ltd|Co|No|Fig|approx)\.)(?<!\b[A-Z]\.)\s+(?=["'“‘(]*[A-Z0-9])/;
+
+function splitParagraph(text: string): string[] {
+  const sentences = text.split(SENTENCE_BREAK);
+  if (sentences.length < 2) return [text];
+  const chunks: string[] = [];
+  let current = "";
+  for (const sentence of sentences) {
+    if (current && current.length + sentence.length + 1 > TARGET_CHUNK) {
+      chunks.push(current);
+      current = sentence;
+    } else {
+      current = current ? `${current} ${sentence}` : sentence;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+/**
  * Render-time cleanup. Rows stored before the current extraction rules keep
  * whatever artifacts they were saved with (escaped markup, syndication
- * footers, headings flattened to paragraphs), so the reader re-applies the
- * ingest filters on the way out and drops a leading headline duplicate —
- * the page header already shows the title.
+ * footers, headings flattened to paragraphs, collapsed paragraphs), so the
+ * reader re-applies the ingest filters on the way out and drops a leading
+ * headline duplicate — the page header already shows the title.
  */
 export function polishBlocks(blocks: ArticleBlock[], title?: string | null): ArticleBlock[] {
   const out: ArticleBlock[] = [];
@@ -145,7 +230,11 @@ export function polishBlocks(blocks: ArticleBlock[], title?: string | null): Art
   for (const block of blocks) {
     const text = cleanText(block.text);
     const type = block.type === "p" && looksLikeHeading(text) ? "h3" : block.type;
-    pushBlock(out, seen, type, text);
+    if (type === "p" && text.length > LONG_PARAGRAPH) {
+      for (const part of splitParagraph(text)) pushBlock(out, seen, "p", part);
+    } else {
+      pushBlock(out, seen, type, text);
+    }
   }
   if (title && out.length && comparableKey(out[0].text) === comparableKey(title)) out.shift();
   return out;

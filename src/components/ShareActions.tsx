@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, ExternalLink, Loader2, Mail, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Mail, RefreshCw, Wand2, X } from "lucide-react";
 import { generateLinkedInPost } from "@/lib/client-api";
 import { Button } from "./ui/Button";
+import { IconAI } from "./TopicIcon";
 import { useToast } from "./ui/Toast";
 
 /** LinkedIn's composer rejects posts beyond ~3000 characters. */
@@ -166,7 +167,7 @@ export function ShareActions({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-accent">
-                  <Sparkles className="h-3.5 w-3.5" />
+                  <IconAI className="h-3.5 w-3.5" />
                   {aiGenerated ? "AI-drafted LinkedIn post" : "Draft LinkedIn post"}
                 </p>
                 <h2 className="mt-1 font-serif text-xl font-bold text-foreground">

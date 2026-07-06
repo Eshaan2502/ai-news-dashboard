@@ -27,11 +27,17 @@
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-playfair), Georgia, "Times New Roman", serif;
+  --font-serif-text: var(--font-source-serif), Georgia, "Times New Roman", serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 html {
   color-scheme: light;
+}
+
+/* Text selection in the theme's oxblood — reads as highlighter on newsprint */
+::selection {
+  background: rgba(154, 59, 38, 0.18);
 }
 
 body {

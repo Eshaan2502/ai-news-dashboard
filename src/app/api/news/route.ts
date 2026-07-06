@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
-import { getFeed } from "@/lib/db/queries";
+import { getFeed, getFeedByIds } from "@/lib/db/queries";
 import { getCurrentUser } from "@/lib/db/user";
 import { jsonOk, jsonError, withErrorHandling } from "@/lib/http";
-import { searchWebNews } from "@/lib/websearch";
+import { ingestWebResults, searchWebNews } from "@/lib/websearch";
 import type { SortOption } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const GET = withErrorHandling("GET /api/news", async (req: NextRequest) =
   const num = (k: string) => (sp.get(k) ? Number(sp.get(k)) : undefined);
   const q = sp.get("q") || undefined;
 
-  const items = await getFeed({
+  let items = await getFeed({
     userId: user.id,
     q,
     sourceId: num("sourceId"),
@@ -29,9 +29,15 @@ export const GET = withErrorHandling("GET /api/news", async (req: NextRequest) =
     minImpact: num("minImpact"),
   });
 
-  // The corpus has nothing for an explicit query — fall back to a live web
-  // search so the user still gets relevant articles (display-only, links out).
-  const webItems = q && items.length === 0 ? await searchWebNews(q, num("limit") ?? 12) : undefined;
+  // The corpus has nothing for an explicit query — search the web live and
+  // ingest the hits so they come back as first-class articles (reader page,
+  // favorites, sharing) and future searches find them in the corpus directly.
+  let webSearched = false;
+  if (q && items.length === 0) {
+    webSearched = true;
+    const ids = await ingestWebResults(await searchWebNews(q, num("limit") ?? 10));
+    if (ids.length) items = await getFeedByIds(ids, user.id);
+  }
 
-  return jsonOk({ items, count: items.length, webItems });
+  return jsonOk({ items, count: items.length, webSearched });
 });

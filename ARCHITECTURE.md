@@ -9,17 +9,17 @@ A single **Next.js 16 (App Router, TypeScript)** application provides the fronte
 API, and the ingestion logic — and keeps itself fresh: an in-process scheduler started at
 boot (`src/instrumentation.ts`) re-ingests every 15 minutes. A standalone **worker** process
 can run the same loop instead for split deployments. State lives in **PostgreSQL +
-pgvector**. **OpenAI** powers summarization, entity/topic extraction, broadcast copy, and
+pgvector**. **OpenAI** powers summarization, entity/topic extraction, LinkedIn post drafts, and
 the embeddings used for semantic dedup.
 
 Choosing one cohesive full-stack app over a separate frontend + backend was deliberate for
 an MVP built and defended by one person: less operational surface, shared types end-to-end,
-and every evaluation dimension (ingestion → DB → API → UI → broadcast) still cleanly layered.
+and every evaluation dimension (ingestion → DB → API → UI → share) still cleanly layered.
 
 ```
 Sources ──▶ Ingestion pipeline ──▶ Postgres+pgvector ──▶ API routes ──▶ React dashboard
   (RSS)     fetch/normalize/          (Drizzle ORM)       (REST)         Feed · Favorites
-            embed/dedup/enrich/score                                     Broadcast → channels
+            embed/dedup/enrich/score                                     Share → channels
 ```
 
 ## 2. Layers
@@ -58,14 +58,31 @@ runs on the in-process schedule.
 
 ### Frontend (`src/app`, `src/components`)
 Server components fetch initial data directly from the query layer (no self-fetch); client
-components (`FeedView`, `FilterBar`, `NewsCard`, `BroadcastModal`, `InsightsPanel`) handle
+components (`FeedView`, `FilterBar`, `NewsCard`, `ShareActions`, `InsightsPanel`) handle
 interaction, calling the API via `lib/client-api.ts`. Optimistic favoriting, debounced
 filtering, and toast confirmations.
 
-### Broadcast (`src/lib/broadcast`)
-Delivery is mocked (no keys required) but returns **real deep links** (`wa.me`, LinkedIn
-share, `mailto:`). Every attempt is written to `broadcast_logs`. Swapping in SendGrid / the
-LinkedIn API / WhatsApp Business is a one-function change in `deliver()`.
+### Share (`src/components/ShareActions.tsx`)
+No third-party send API (no WhatsApp Business, no SendGrid, no LinkedIn posting API) — every
+channel is a **real deep link** the reader completes themselves: `wa.me` and `mailto:` open
+prefilled WhatsApp/email directly, and LinkedIn opens a modal with a real AI-drafted post
+(`POST /api/share/linkedin` → `generateLinkedInPost()` in `src/lib/ai/openai.ts`, an actual
+`gpt-4o-mini` call, editable before posting) plus a copy-to-clipboard fallback for mobile.
+Nothing is logged server-side today.
+
+### Full Spectrum (`src/lib/spectrum.ts`, `src/components/SpectrumPanel.tsx`)
+The article page's "explore perspectives" panel — same-story coverage from other outlets,
+each labeled with the lens it views the story through. `GET /api/spectrum/:id` gathers
+candidates from two places: the corpus (dedup **cluster mates** — near-duplicates from other
+feeds are by definition the same story — plus pgvector neighbors within
+`SPECTRUM_MAX_DISTANCE`, default 0.5) and a **live Bing News search** reusing the search
+fallback's ingest pipeline, so web hits become first-class articles with reader pages. One
+story per outlet, capped at 8. A single `gpt-4o-mini` call (`analyzeSpectrum()`) then acts as
+both relevance filter and analyst: it drops unrelated candidates, assigns each survivor a 2–5
+word lens label + one-line angle, and writes a "common ground" / "where they split" summary.
+Keyless fallback lists the coverage unlabeled. Results cache on the `news_items` row
+(`spectrum`, `spectrum_at`) like reader extraction; sparse or keyless results rebuild hourly,
+complete ones are kept.
 
 ## 3. Data flow (an ingestion pass)
 
@@ -124,10 +141,11 @@ the dashboard charts. Fully deterministic when AI is off (newsworthiness default
 ## 6. Data model
 
 `sources` (feeds + status) · `news_items` (content, `embedding vector(1536)`, `cluster_id`,
-`is_duplicate`, `impact_score`, `entities`) · `favorites` (unique per user+item) ·
-`broadcast_logs` (platform, content, status) · `users` (single demo user in the MVP).
-Indexes on canonical URL (unique), published_at, cluster_id, impact_score, and an HNSW cosine
-index on `embedding`.
+`is_duplicate`, `impact_score`, `entities`) · `favorites` (unique per user+item) · `users`
+(single demo user in the MVP). Indexes on canonical URL (unique), published_at, cluster_id,
+impact_score, and an HNSW cosine index on `embedding`. A `broadcast_logs` table exists in the
+migration but is unused by the app — a leftover from an earlier design; drop it or wire up
+real logging in `ShareActions`.
 
 ## 7. Key decisions & trade-offs
 
